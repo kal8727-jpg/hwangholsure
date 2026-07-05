@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>황홀스레 | 인기 디저트 모음</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+    :root {
+      --yellow:      #FFD93D;
+      --yellow-light:#FFF8DC;
+      --yellow-pale: #FFFDF0;
+      --coral:       #FF6B6B;
+      --coral-light: #FFF0F0;
+      --green-naver: #03C75A;
+      --brown:       #5C3D2E;
+      --brown-light: #8B6F5E;
+      --gray-100:    #F8F8F8;
+      --gray-200:    #EFEFEF;
+      --gray-500:    #999;
+      --white:       #FFFFFF;
+      --r-sm: 12px;
+      --r-md: 20px;
+      --r-lg: 28px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: var(--yellow-pale);
+      color: var(--brown);
+    }
+
+    /* ── HERO ── */
+    .hero {
+      background: linear-gradient(160deg, #fff9e6 0%, #fff3b0 50%, #ffe566 100%);
+      border-bottom: 2px solid #FFE566;
+      padding: 56px 24px 48px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '🍪 🌈 🧈 🍰 🧁';
+      font-size: 1.6rem;
+      letter-spacing: 6px;
+      display: block;
+      margin-bottom: 18px;
+      opacity: .5;
+    }
+    .hero-logo {
+      font-size: .72rem;
+      font-weight: 900;
+      letter-spacing: 5px;
+      color: var(--brown-light);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      font-size: clamp(1.6rem, 5vw, 2.6rem);
+      font-weight: 900;
+      color: var(--brown);
+      line-height: 1.3;
+      margin-bottom: 12px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--coral);
+    }
+    .hero-sub {
+      font-size: .95rem;
+      color: var(--brown-light);
+      margin-bottom: 22px;
+      line-height: 1.7;
+    }
+    .hero-tags {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .hero-tag {
+      background: rgba(255,255,255,.7);
+      border: 1.5px solid #FFD93D;
+      border-radius: 999px;
+      padding: 5px 16px;
+      font-size: .78rem;
+      font-weight: 700;
+      color: var(--brown);
+    }
+
+    /* ── CONTAINER ── */
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* ── SECTION ── */
+    .sec {
+      padding: 56px 20px;
+    }
+    .sec-head {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .sec-label {
+      font-size: .7rem;
+      font-weight: 900;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--coral);
+      margin-bottom: 8px;
+    }
+    .sec-title {
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: var(--brown);
+      margin-bottom: 6px;
+    }
+    .sec-desc {
+      font-size: .88rem;
+      color: var(--brown-light);
+      line-height: 1.7;
+    }
+
+    /* ── PRODUCT GRID ── */
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 24px;
+    }
+
+    /* ── PRODUCT CARD ── */
+    .p-card {
+      background: var(--white);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,.07);
+      transition: transform .2s, box-shadow .2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .p-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 36px rgba(0,0,0,.12);
+    }
+
+    /* 카드 상단 컬러 배너 */
+    .p-banner {
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4rem;
+      position: relative;
+    }
+    .p-rank {
+      position: absolute;
+      top: 12px;
+      left: 14px;
+      background: var(--brown);
+      color: #fff;
+      font-size: .65rem;
+      font-weight: 900;
+      padding: 3px 10px;
+      border-radius: 999px;
+      letter-spacing: 1px;
+    }
+    .p-badge-hot {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      background: var(--coral);
+      color: #fff;
+      font-size: .65rem;
+      font-weight: 900;
+      padding: 3px 10px;
+      border-radius: 999px;
+    }
+
+    /* 카드 바디 */
+    .p-body {
+      padding: 22px 22px 0;
+      flex: 1;
+    }
+    .p-category {
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--brown-light);
+      margin-bottom: 4px;
+    }
+    .p-name {
+      font-size: 1.1rem;
+      font-weight: 900;
+      color: var(--brown);
+      margin-bottom: 8px;
+      line-height: 1.35;
+    }
+
+    /* 별점 */
+    .p-rating {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .stars { color: #FFB800; font-size: .85rem; letter-spacing: 1px; }
+    .rating-num { font-size: .82rem; font-weight: 700; color: var(--brown); }
+    .review-cnt { font-size: .78rem; color: var(--gray-500); }
+
+    /* 설명 */
+    .p-desc {
+      font-size: .85rem;
+      color: var(--brown-light);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    /* 태그 */
+    .p-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+    .p-tag {
+      font-size: .68rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--yellow-light);
+      color: var(--brown);
+      border: 1px solid #FFE566;
+    }
+    .p-tag.red {
+      background: var(--coral-light);
+      color: var(--coral);
+      border-color: #FFCACA;
+    }
+
+    /* 가격 */
+    .p-price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      background: var(--yellow-light);
+      border-radius: var(--r-sm);
+    }
+    .p-price-orig {
+      font-size: .78rem;
+      color: var(--gray-500);
+      text-decoration: line-through;
+    }
+    .p-discount {
+      font-size: .82rem;
+      font-weight: 900;
+      color: var(--coral);
+    }
+    .p-price {
+      font-size: 1.2rem;
+      font-weight: 900;
+      color: var(--brown);
+    }
+    .p-price-unit { font-size: .78rem; color: var(--brown-light); }
+
+    /* 구매 버튼 */
+    .p-footer {
+      padding: 0 22px 22px;
+    }
+    .btn-buy {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 15px;
+      border-radius: var(--r-md);
+      background: linear-gradient(135deg, #03C75A, #02a84b);
+      color: #fff;
+      font-size: .95rem;
+      font-weight: 900;
+      text-decoration: none;
+      box-shadow: 0 4px 14px rgba(3,199,90,.3);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn-buy:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(3,199,90,.45);
+    }
+    .btn-buy svg {
+      width: 18px; height: 18px; fill: #fff; flex-shrink: 0;
+    }
+
+    /* ── QUIZ CTA ── */
+    .cta-section {
+      background: linear-gradient(135deg, var(--brown) 0%, #3d2518 100%);
+      padding: 56px 24px;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-size: 1.45rem;
+      font-weight: 900;
+      color: var(--yellow);
+      margin-bottom: 10px;
+    }
+    .cta-section p {
+      font-size: .9rem;
+      color: rgba(255,255,255,.7);
+      margin-bottom: 28px;
+      line-height: 1.7;
+    }
+    .btn-quiz {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 16px 32px;
+      border-radius: var(--r-md);
+      background: var(--yellow);
+      color: var(--brown);
+      font-size: 1rem;
+      font-weight: 900;
+      text-decoration: none;
+      box-shadow: 0 4px 16px rgba(255,217,61,.4);
+      transition: transform .15s;
+    }
+    .btn-quiz:hover { transform: translateY(-2px); }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--brown);
+      color: rgba(255,255,255,.5);
+      text-align: center;
+      padding: 28px 24px;
+      font-size: .78rem;
+    }
+    footer a { color: var(--yellow); text-decoration: none; }
+
+    /* ── ANIMATE ── */
+    .fade { opacity: 0; transform: translateY(20px); transition: opacity .5s, transform .5s; }
+    .fade.in { opacity: 1; transform: none; }
+
+    @media (max-width: 480px) {
+      .product-grid { grid-template-columns: 1fr; }
+      .hero h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ HERO ══ -->
+<div class="hero">
+  <div class="container">
+    <p class="hero-logo">✦ Hwangholsure ✦</p>
+    <h1>황홀스레의 <em>인기 디저트</em><br>한눈에 보기 🍰</h1>
+    <p class="hero-sub">
+      리뷰 수천 개가 인증한 황홀스레 베스트 메뉴 5종<br>
+      지금 바로 네이버 스마트스토어에서 만나보세요
+    </p>
+    <div class="hero-tags">
+      <span class="hero-tag">⭐ 평균 별점 4.8</span>
+      <span class="hero-tag">📦 전국 배송</span>
+      <span class="hero-tag">🎁 선물 포장 가능</span>
+      <span class="hero-tag">🛒 네이버 스마트스토어</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ PRODUCTS ══ -->
+<section class="sec">
+  <div class="container">
+    <div class="sec-head">
+      <p class="sec-label">Best Products</p>
+      <h2 class="sec-title">황홀스레 인기 메뉴 TOP 5</h2>
+      <p class="sec-desc">수천 개의 리뷰가 인증한 황홀스레의 시그니처 디저트를 소개합니다</p>
+    </div>
+
+    <div class="product-grid">
+
+      <!-- 1. 두쫀쿠 -->
+      <div class="p-card fade">
+        <div class="p-banner" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);">
+          <span class="p-rank">🥇 인기 1위</span>
+          <span style="font-size:3.8rem;">🍪</span>
+          <span class="p-badge-hot">🔥 베스트</span>
+        </div>
+        <div class="p-body">
+          <p class="p-category">두바이 쫀득쿠키</p>
+          <h3 class="p-name">두바이 쫀득쿠키<br>두쫀쿠 피스타치오</h3>
+          <div class="p-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-num">4.78</span>
+            <span class="review-cnt">· 리뷰 2,470개</span>
+          </div>
+          <p class="p-desc">
+            황홀스레 시그니처! 쫄깃한 쿠키 안에 피스타치오 생크림이 가득. 왕치즈·화이트(마카다미아코코넛) 등 다양한 맛으로 즐길 수 있어요.
+          </p>
+          <div class="p-tags">
+            <span class="p-tag">피스타치오</span>
+            <span class="p-tag">쫄깃</span>
+            <span class="p-tag">두바이초콜릿</span>
+            <span class="p-tag red">SNS 화제</span>
+          </div>
+          <div class="p-price-row">
+            <span class="p-price-orig">4,000원</span>
+            <span class="p-discount">12% ↓</span>
+            <span class="p-price">3,490<span class="p-price-unit">원</span></span>
+          </div>
+        </div>
+        <div class="p-footer">
+          <a href="https://smartstore.naver.com/hwangholsre/products/12669876991" target="_blank" class="btn-buy">
+            <svg viewBox="0 0 24 24"><path d="M18.5 3h-13A2.5 2.5 0 003 5.5v13A2.5 2.5 0 005.5 21h13a2.5 2.5 0 002.5-2.5v-13A2.5 2.5 0 0018.5 3zm-1 9.75h-4.25V17h-2.5v-4.25H6.5v-2.5h4.25V6h2.5v4.25h4.25v2.5z"/></svg>
+            네이버에서 구매하기
+          </a>
+        </div>
+      </div>
+
+      <!-- 2. 마카롱 -->
+      <div class="p-card fade">
+        <div class="p-banner" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0);">
+          <span class="p-rank">🥈 베스트셀러</span>
+          <span style="font-size:3.8rem;">🌈</span>
+          <span class="p-badge-hot">💝 선물 최고</span>
+        </div>
+        <div class="p-body">
+          <p class="p-category">수제 마카롱</p>
+          <h3 class="p-name">수제 똥카롱<br>마카롱 맛선택</h3>
+          <div class="p-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-num">4.90</span>
+            <span class="review-cnt">· 리뷰 1,465개</span>
+          </div>
+          <p class="p-desc">
+            알록달록 예쁜 황홀스레 수제 마카롱. 베이직파 맛선택부터 랜덤 9구 세트, 꼬끄로레이크까지! 선물용으로도 완벽한 시그니처 마카롱이에요.
+          </p>
+          <div class="p-tags">
+            <span class="p-tag">수제마카롱</span>
+            <span class="p-tag">선물용</span>
+            <span class="p-tag">맛선택</span>
+            <span class="p-tag red">리뷰 1,465개</span>
+          </div>
+          <div class="p-price-row">
+            <span class="p-price-orig">3,200원</span>
+            <span class="p-discount">6% ↓</span>
+            <span class="p-price">2,800<span class="p-price-unit">원~</span></span>
+          </div>
+        </div>
+        <div class="p-footer">
+          <a href="https://smartstore.naver.com/hwangholsre/products/5766515671" target="_blank" class="btn-buy">
+            <svg viewBox="0 0 24 24"><path d="M18.5 3h-13A2.5 2.5 0 003 5.5v13A2.5 2.5 0 005.5 21h13a2.5 2.5 0 002.5-2.5v-13A2.5 2.5 0 0018.5 3zm-1 9.75h-4.25V17h-2.5v-4.25H6.5v-2.5h4.25V6h2.5v4.25h4.25v2.5z"/></svg>
+            네이버에서 구매하기
+          </a>
+        </div>
+      </div>
+
+      <!-- 3. 버터떡 -->
+      <div class="p-card fade">
+        <div class="p-banner" style="background:linear-gradient(135deg,#fff8e1,#ffe082);">
+          <span class="p-rank">🆕 신상 인기</span>
+          <span style="font-size:3.8rem;">🧈</span>
+          <span class="p-badge-hot">✨ 급상승</span>
+        </div>
+        <div class="p-body">
+          <p class="p-category">상하이 발효 버터떡</p>
+          <h3 class="p-name">상하이 발효 버터떡<br>2개입</h3>
+          <div class="p-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-num">4.65</span>
+            <span class="review-cnt">· 리뷰 43개</span>
+          </div>
+          <p class="p-desc">
+            2026년 최고 핫 디저트! 전통 떡의 쫄깃함에 서양 버터의 풍미가 더해진 황홀스레의 따뜻한 신상 메뉴. 2개입 구성으로 나눠 먹기 딱 좋아요.
+          </p>
+          <div class="p-tags">
+            <span class="p-tag">버터떡</span>
+            <span class="p-tag">쫄깃</span>
+            <span class="p-tag">발효</span>
+            <span class="p-tag red">2026 트렌드</span>
+          </div>
+          <div class="p-price-row">
+            <span class="p-price-orig">3,500원</span>
+            <span class="p-discount">16% ↓</span>
+            <span class="p-price">2,990<span class="p-price-unit">원</span></span>
+          </div>
+        </div>
+        <div class="p-footer">
+          <a href="https://smartstore.naver.com/hwangholsre/products/13255692975" target="_blank" class="btn-buy">
+            <svg viewBox="0 0 24 24"><path d="M18.5 3h-13A2.5 2.5 0 003 5.5v13A2.5 2.5 0 005.5 21h13a2.5 2.5 0 002.5-2.5v-13A2.5 2.5 0 0018.5 3zm-1 9.75h-4.25V17h-2.5v-4.25H6.5v-2.5h4.25V6h2.5v4.25h4.25v2.5z"/></svg>
+            네이버에서 구매하기
+          </a>
+        </div>
+      </div>
+
+      <!-- 4. 바스크 치즈케이크 -->
+      <div class="p-card fade">
+        <div class="p-banner" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb);">
+          <span class="p-rank">🏅 프리미엄</span>
+          <span style="font-size:3.8rem;">🍰</span>
+          <span class="p-badge-hot">🌿 글루텐프리</span>
+        </div>
+        <div class="p-body">
+          <p class="p-category">수제 케이크</p>
+          <h3 class="p-name">수제 바스크 치즈케이크<br>글루텐프리</h3>
+          <div class="p-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-num">4.92</span>
+            <span class="review-cnt">· 리뷰 185개</span>
+          </div>
+          <p class="p-desc">
+            황홀스레의 프리미엄 바스크 치즈케이크. 묵직하고 진한 치즈의 깊이와 살짝 탄 카라멜 향이 어우러져요. 글루텐프리 재료로 만든 고급 디저트.
+          </p>
+          <div class="p-tags">
+            <span class="p-tag">바스크치즈케이크</span>
+            <span class="p-tag">글루텐프리</span>
+            <span class="p-tag">고급디저트</span>
+            <span class="p-tag red">별점 4.92</span>
+          </div>
+          <div class="p-price-row">
+            <span class="p-price-orig">26,800원</span>
+            <span class="p-discount">37% ↓</span>
+            <span class="p-price">16,900<span class="p-price-unit">원</span></span>
+          </div>
+        </div>
+        <div class="p-footer">
+          <a href="https://smartstore.naver.com/hwangholsre/products/5780119507" target="_blank" class="btn-buy">
+            <svg viewBox="0 0 24 24"><path d="M18.5 3h-13A2.5 2.5 0 003 5.5v13A2.5 2.5 0 005.5 21h13a2.5 2.5 0 002.5-2.5v-13A2.5 2.5 0 0018.5 3zm-1 9.75h-4.25V17h-2.5v-4.25H6.5v-2.5h4.25V6h2.5v4.25h4.25v2.5z"/></svg>
+            네이버에서 구매하기
+          </a>
+        </div>
+      </div>
+
+      <!-- 5. 마들렌 -->
+      <div class="p-card fade">
+        <div class="p-banner" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7);">
+          <span class="p-rank">☕ 스테디셀러</span>
+          <span style="font-size:3.8rem;">🧁</span>
+          <span class="p-badge-hot">💛 촉촉</span>
+        </div>
+        <div class="p-body">
+          <p class="p-category">수제 구움과자</p>
+          <h3 class="p-name">수제 마들렌 4종<br>촉촉 천연버터</h3>
+          <div class="p-rating">
+            <span class="stars">★★★★★</span>
+            <span class="rating-num">4.90</span>
+            <span class="review-cnt">· 리뷰 213개</span>
+          </div>
+          <p class="p-desc">
+            천연버터로 만든 황홀스레 수제 마들렌 4종. 겉은 살짝 바삭하고 속은 촉촉해요. 수제 스콘 3종과 함께 즐기면 더욱 완벽한 티타임!
+          </p>
+          <div class="p-tags">
+            <span class="p-tag">수제마들렌</span>
+            <span class="p-tag">천연버터</span>
+            <span class="p-tag">4종세트</span>
+            <span class="p-tag red">촉촉한 식감</span>
+          </div>
+          <div class="p-price-row">
+            <span class="p-price-orig">3,300원</span>
+            <span class="p-discount">15% ↓</span>
+            <span class="p-price">2,800<span class="p-price-unit">원</span></span>
+          </div>
+        </div>
+        <div class="p-footer">
+          <a href="https://smartstore.naver.com/hwangholsre/products/7612242121" target="_blank" class="btn-buy">
+            <svg viewBox="0 0 24 24"><path d="M18.5 3h-13A2.5 2.5 0 003 5.5v13A2.5 2.5 0 005.5 21h13a2.5 2.5 0 002.5-2.5v-13A2.5 2.5 0 0018.5 3zm-1 9.75h-4.25V17h-2.5v-4.25H6.5v-2.5h4.25V6h2.5v4.25h4.25v2.5z"/></svg>
+            네이버에서 구매하기
+          </a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── 별점 요약 ── -->
+<section style="background:#fff;padding:40px 20px;border-top:1px solid var(--gray-200);">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;text-align:center;">
+      <div style="padding:20px 10px;">
+        <div style="font-size:2rem;font-weight:900;color:var(--brown);">4.83</div>
+        <div style="font-size:.82rem;color:var(--brown-light);margin-top:4px;">평균 별점</div>
+        <div style="color:#FFB800;font-size:1rem;margin-top:4px;">★★★★★</div>
+      </div>
+      <div style="padding:20px 10px;">
+        <div style="font-size:2rem;font-weight:900;color:var(--brown);">4,376+</div>
+        <div style="font-size:.82rem;color:var(--brown-light);margin-top:4px;">총 리뷰 수</div>
+        <div style="font-size:.75rem;color:var(--gray-500);margin-top:4px;">실구매자 후기</div>
+      </div>
+      <div style="padding:20px 10px;">
+        <div style="font-size:2rem;font-weight:900;color:var(--brown);">5종</div>
+        <div style="font-size:.82rem;color:var(--brown-light);margin-top:4px;">시그니처 메뉴</div>
+        <div style="font-size:.75rem;color:var(--gray-500);margin-top:4px;">엄선된 베스트</div>
+      </div>
+      <div style="padding:20px 10px;">
+        <div style="font-size:2rem;font-weight:900;color:var(--brown);">전국</div>
+        <div style="font-size:.82rem;color:var(--brown-light);margin-top:4px;">배송 가능</div>
+        <div style="font-size:.75rem;color:var(--gray-500);margin-top:4px;">네이버 스마트스토어</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── QUIZ CTA ── -->
+<div class="cta-section">
+  <div class="container">
+    <h2>🤔 어떤 메뉴가 나에게 딱 맞을까?</h2>
+    <p>
+      5가지 질문으로 알아보는 나의 황홀스레 디저트 유형!<br>
+      성격에 꼭 맞는 메뉴를 추천해드려요 ✨
+    </p>
+    <a href="hwangholsure_quiz.html" class="btn-quiz">
+      🍰 디저트 유형 테스트 하러 가기
+    </a>
+  </div>
+</div>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <p>ⓒ <a href="https://smartstore.naver.com/hwangholsre" target="_blank">황홀스레</a> 디저트 카페 · 네이버 스마트스토어</p>
+  <p style="margin-top:6px;">모든 제품은 수제로 정성껏 만들어집니다 🍰</p>
+</footer>
+
+<script>
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('in');
+        obs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.fade').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>
