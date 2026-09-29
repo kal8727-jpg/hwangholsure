@@ -97,6 +97,15 @@ details pre{white-space:pre-wrap;font:13px/1.5 var(--f-body);margin:8px 0 0;colo
 .items .nm{min-width:130px}
 .items .al{min-width:150px}
 .empty{padding:28px 16px;text-align:center;color:var(--muted)}
+.steps{display:flex;gap:14px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+.steps .on{color:var(--accent)}
+.confirm{border:1px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.sum td,.sum th{padding:6px 8px;background:transparent}
+.prev input[type="checkbox"]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer}
+.prev tr.ok td{background:var(--pos-soft)}
+.explain{font-size:12px;color:var(--muted);margin-top:3px}
+.badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:var(--neg);color:var(--surface);font-size:11px;line-height:18px;text-align:center;font-family:var(--f-num)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
 @media (max-width:560px){.prev .src{display:none}.brand .sync{margin-left:0;width:100%}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -110,6 +119,7 @@ details pre{white-space:pre-wrap;font:13px/1.5 var(--f-body);margin:8px 0 0;colo
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="input" aria-selected="true">메시지 입력</button>
+      <button role="tab" data-tab="pending" aria-selected="false">검토 대기 <span class="badge" id="pendBadge" hidden>0</span></button>
       <button role="tab" data-tab="stock" aria-selected="false">재고 현황</button>
       <button role="tab" data-tab="log" aria-selected="false">변동 기록</button>
       <button role="tab" data-tab="items" aria-selected="false">품목 관리</button>
@@ -152,21 +162,42 @@ details pre{white-space:pre-wrap;font:13px/1.5 var(--f-body);margin:8px 0 0;colo
   </div>
 
   <div class="card" id="previewCard" hidden>
+    <div class="steps" aria-hidden="true"><span class="on">① 분석</span><span class="on" id="stRev">② 검토</span><span id="stOk">③ 승인·반영</span></div>
     <div class="row">
-      <h2 class="grow">적용할 변동</h2>
+      <div class="grow"><h2>분석 결과 검토</h2><p class="sub" id="reviewSrc"></p></div>
       <button class="btn small" id="btnAddRow">+ 줄 추가</button>
     </div>
+    <details id="origWrap"><summary>원문 메시지 보기</summary><pre id="origMsg"></pre></details>
     <div id="warns"></div>
     <div class="scroll"><table class="prev">
-      <thead><tr><th>품목</th><th>지점</th><th class="n">변동</th><th>사유</th><th>적용 후</th><th class="src">원문</th><th></th></tr></thead>
+      <thead><tr><th>확인</th><th>품목</th><th>지점</th><th class="n">변동</th><th>사유</th><th>적용 후</th><th class="src">원문</th><th></th></tr></thead>
       <tbody id="prevBody"></tbody>
     </table></div>
-    <div class="row">
-      <button class="btn primary" id="btnApply">재고에 적용</button>
-      <button class="btn" id="btnCancel">취소</button>
+    <div class="row" id="reviewBtns">
+      <button class="btn" id="btnCheckAll" data-appr>모두 확인</button>
+      <button class="btn primary" id="btnApply" data-appr>승인하기</button>
+      <button class="btn" id="btnSendReview">검토 요청 보내기</button>
+      <button class="btn danger" id="btnReject" data-appr hidden>반려</button>
+      <button class="btn" id="btnCancel">닫기</button>
       <span class="sub grow" id="applyStatus"></span>
     </div>
+    <div class="confirm" id="rejectBox" hidden>
+      <label class="lbl" for="rejectWhy">반려 이유 (근무자에게 보여요)</label>
+      <input id="rejectWhy" placeholder="예: 황두쫀 수량 다시 확인해주세요">
+      <div class="row"><button class="btn danger" id="btnRejectOk">반려 확정</button><button class="btn" id="btnRejectBack">돌아가기</button></div>
+    </div>
+    <div class="confirm" id="confirmBox" hidden>
+      <b>이대로 재고에 반영할까요?</b>
+      <div class="scroll"><table class="sum"><thead><tr><th>품목</th><th>지점</th><th class="n">지금</th><th class="n">변동</th><th class="n">반영 후</th></tr></thead><tbody id="sumBody"></tbody></table></div>
+      <div class="row"><button class="btn primary" id="btnFinal">최종 승인하고 반영</button><button class="btn" id="btnBack">돌아가서 고치기</button></div>
+    </div>
   </div>
+</section>
+
+<!-- 검토 대기 -->
+<section class="panel" id="p-pending" hidden>
+  <div><h2>검토 대기</h2><p class="sub" id="pendSub">근무자가 보낸 분석 결과예요. 승인하기 전에는 재고가 바뀌지 않아요.</p></div>
+  <div class="log" id="pendList"><div class="empty">검토할 요청이 없어요.</div></div>
 </section>
 
 <!-- 재고 현황 -->
@@ -239,6 +270,9 @@ let warnings = [];
 let lastMsg = "";
 let editItems = null;      // working copy for 품목 관리
 let adjusting = false;
+let isApprover = true;    // owner/editors approve; staff only send review requests
+let pending = [];
+let reviewing = null;     // {id, by, at} when a sent request is open for review
 
 const ls = {
   get(k){ try { return localStorage.getItem(k); } catch { return null; } },
@@ -259,7 +293,7 @@ const cats = list => [...new Set(list.map(i => i.cat))];
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
 function showTab(t){
   document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  ["input","stock","log","items"].forEach(k => $("#p-"+k).hidden = k !== t);
+  ["input","pending","stock","log","items"].forEach(k => $("#p-"+k).hidden = k !== t);
   ls.set("tab", t);
 }
 const savedTab = ls.get("tab"); if (savedTab && $("#p-"+savedTab)) showTab(savedTab);
@@ -330,10 +364,9 @@ $("#btnAi").onclick = async () => {
                loc, unit, count: q, delta: unit === "개" ? Math.round(q) : null,
                reason: REASONS.includes(c.reason) ? c.reason : "기타", src: String(c.src||"").slice(0,120) };
     }).filter(r => r.count !== 0);
-    warnings = (Array.isArray(res?.warnings) ? res.warnings : []).map(String);
-    lastMsg = msg;
-    $("#aiStatus").textContent = preview.length ? "" : "재고 변동을 찾지 못했어요.";
-    renderPreview();
+    const rows = preview;
+    $("#aiStatus").textContent = rows.length ? "" : "재고 변동을 찾지 못했어요.";
+    openReview(rows, (Array.isArray(res?.warnings) ? res.warnings : []).map(String), msg, null);
   } catch (e) {
     const m = {
       not_granted: "AI 사용을 허용하지 않아 분석하지 못했어요. ‘빠른 분석’을 쓰거나 새로고침 후 허용해주세요.",
@@ -406,11 +439,11 @@ $("#btnLocal").onclick = () => {
   const msg = $("#msg").value.trim();
   if (!msg) return toast("메시지를 먼저 붙여넣으세요.");
   if (!state) return toast("재고표를 아직 불러오지 못했어요.");
-  const r = localParse(msg); preview = r.out; warnings = r.warns; lastMsg = msg;
-  $("#aiStatus").textContent = preview.length ? "" : "재고 변동을 찾지 못했어요.";
-  renderPreview();
+  const r = localParse(msg);
+  $("#aiStatus").textContent = r.out.length ? "" : "재고 변동을 찾지 못했어요.";
+  openReview(r.out, r.warns, msg, null);
 };
-$("#btnClear").onclick = () => { $("#msg").value = ""; ls.set("draft",""); preview = []; warnings = []; renderPreview(); $("#aiStatus").textContent = ""; };
+$("#btnClear").onclick = () => { $("#msg").value = ""; ls.set("draft",""); closeReview(); $("#aiStatus").textContent = ""; };
 
 // ---------- preview ----------
 function itemOptions(sel){
@@ -421,9 +454,26 @@ function itemOptions(sel){
   return h;
 }
 const effDelta = r => r.unit === "박스" ? (itemById(r.itemId)?.box ? Math.round(r.count * itemById(r.itemId).box) : null) : r.delta;
+const rowBad = r => !r.itemId || !effDelta(r);
+const whoName = () => $("#who").value.trim() || "이름 없음";
+const tFmt = iso => new Date(iso).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
+function explain(r, d){
+  const it = itemById(r.itemId); if (!it || d == null || !d) return "";
+  return `${LOCN[r.loc]} ${esc(it.cat)} ‘${esc(it.name)}’ ${Math.abs(d)}개 ${d > 0 ? "늘어남" : "줄어듦"} · ${esc(r.reason)}`;
+}
+function openReview(rows, warns, msg, meta){
+  preview = rows.map(r => ({...r, ok: false})); warnings = warns; lastMsg = msg; reviewing = meta;
+  $("#confirmBox").hidden = true; $("#rejectBox").hidden = true;
+  renderPreview();
+  $("#previewCard").scrollIntoView({behavior: "smooth", block: "start"});
+}
+function closeReview(){ preview = []; warnings = []; reviewing = null; $("#confirmBox").hidden = true; $("#rejectBox").hidden = true; renderPreview(); }
 function renderPreview(){
   const card = $("#previewCard");
   card.hidden = !preview.length && !warnings.length;
+  if (card.hidden) return;
+  $("#reviewSrc").textContent = reviewing ? `${reviewing.by} · ${tFmt(reviewing.at)} 검토 요청` : "방금 분석한 메시지 · 아직 재고에 반영되지 않았어요";
+  $("#origMsg").textContent = lastMsg || ""; $("#origWrap").hidden = !lastMsg;
   $("#warns").innerHTML = warnings.map(w => `<div class="note warn">${esc(w)}</div>`).join("");
   const run = {};
   $("#prevBody").innerHTML = preview.map((r, i) => {
@@ -431,18 +481,20 @@ function renderPreview(){
     let after = "", bad = false;
     if (!r.itemId){
       bad = true;
-      after = `<span class="zero">목록에 없음</span> <button class="btn small" data-new="${i}">‘${esc(r.name)}’ ${esc(r.pack||"")} 품목 추가</button>`;
+      after = `<span class="zero">목록에 없음</span>` + (isApprover ? ` <button class="btn small" data-new="${i}">‘${esc(r.name)}’ ${esc(r.pack||"")} 품목 추가</button>` : ` <span class="sub">‘${esc(r.name)}’ · 관리자가 추가해요</span>`);
     } else if (d == null){
       bad = true;
-      after = `<span class="zero">박스당</span> <input class="q" data-f="box" type="number" inputmode="numeric" placeholder="개수" aria-label="박스당 개수" style="width:70px"> <span class="zero">개?</span>`;
+      after = isApprover ? `<span class="zero">박스당</span> <input class="q" data-f="box" type="number" inputmode="numeric" placeholder="개수" aria-label="박스당 개수" style="width:70px"> <span class="zero">개?</span>`
+                         : `<span class="zero">박스당 개수 미등록</span>`;
     } else {
       const k = r.itemId + ":" + r.loc; const before = k in run ? run[k] : qty(r.itemId, r.loc);
       run[k] = before + d; after = `<span class="num">${before} → <b class="${run[k] < 0 ? "zero" : ""}">${run[k]}</b></span>`;
     }
     if (!d) bad = true;
     const boxNote = r.unit === "박스" ? `<div class="sub num">${r.count}박스${itemById(r.itemId)?.box ? " × " + itemById(r.itemId).box : ""}</div>` : "";
-    return `<tr class="${bad ? "bad" : ""}" data-i="${i}">
-      <td><select data-f="itemId" aria-label="품목">${itemOptions(r.itemId)}</select></td>
+    return `<tr class="${bad ? "bad" : r.ok ? "ok" : ""}" data-i="${i}">
+      <td><input type="checkbox" data-f="ok" ${r.ok ? "checked" : ""} ${bad || !isApprover ? "disabled" : ""} aria-label="이 줄 확인"></td>
+      <td><select data-f="itemId" aria-label="품목">${itemOptions(r.itemId)}</select><div class="explain">${explain(r, d)}</div></td>
       <td><select data-f="loc" aria-label="지점">${LOCS.map(l => `<option value="${l.k}"${l.k===r.loc?" selected":""}>${l.n}</option>`).join("")}</select></td>
       <td class="n"><input class="q" data-f="delta" type="number" inputmode="numeric" value="${d ?? ""}" aria-label="변동 수량">${boxNote}</td>
       <td><select data-f="reason" aria-label="사유">${REASONS.map(x => `<option${x===r.reason?" selected":""}>${x}</option>`).join("")}</select></td>
@@ -450,12 +502,23 @@ function renderPreview(){
       <td class="src">${esc(r.src)}</td>
       <td><button class="x" data-del="${i}" aria-label="줄 삭제">×</button></td></tr>`;
   }).join("");
-  const nBad = preview.filter(r => !r.itemId || !effDelta(r)).length;
-  $("#btnApply").disabled = !canWrite || !preview.length || nBad > 0;
-  $("#applyStatus").textContent = !canWrite ? "보기 권한만 있어서 적용할 수 없어요." : nBad ? `빨간 줄 ${nBad}개를 먼저 정리해주세요.` : preview.length ? `${preview.length}줄` : "";
+  const nBad = preview.filter(rowBad).length, nOk = preview.filter(r => r.ok && !rowBad(r)).length;
+  document.querySelectorAll("#reviewBtns [data-appr]").forEach(b => b.hidden = !isApprover);
+  $("#btnReject").hidden = !isApprover || !reviewing;
+  $("#btnSendReview").hidden = !!reviewing || isApprover;
+  $("#btnSendReview").disabled = !canWrite || !preview.length;
+  $("#btnApply").disabled = !preview.length || nBad > 0 || nOk < preview.length;
+  $("#btnCheckAll").disabled = nBad > 0 || nOk === preview.length;
+  $("#stOk").className = $("#confirmBox").hidden ? "" : "on";
+  $("#applyStatus").textContent = !canWrite ? "보기 권한만 있어요."
+    : !isApprover ? "내용을 확인하고 검토 요청을 보내면 관리자가 승인한 뒤 재고에 반영돼요."
+    : nBad ? `빨간 줄 ${nBad}개를 먼저 정리해주세요.` : `${nOk} / ${preview.length}줄 확인함`;
 }
 $("#prevBody").addEventListener("change", async e => {
   const tr = e.target.closest("tr"); if (!tr) return; const r = preview[+tr.dataset.i]; const f = e.target.dataset.f;
+  $("#confirmBox").hidden = true;
+  if (f === "ok"){ r.ok = e.target.checked; renderPreview(); return; }
+  r.ok = false; // any edit needs a fresh check
   if (f === "delta"){ r.unit = "개"; r.delta = Math.trunc(Number(e.target.value) || 0); r.count = r.delta; }
   else if (f === "itemId"){ r.itemId = e.target.value || null; r.name = itemById(r.itemId)?.name || r.name; }
   else if (f === "box"){
@@ -468,8 +531,8 @@ $("#prevBody").addEventListener("change", async e => {
   renderPreview();
 });
 $("#prevBody").addEventListener("click", async e => {
-  const d = e.target.dataset.del; if (d != null){ preview.splice(+d, 1); renderPreview(); return; }
-  const n = e.target.dataset.new; if (n == null || !canWrite) return;
+  const d = e.target.dataset.del; if (d != null){ preview.splice(+d, 1); $("#confirmBox").hidden = true; renderPreview(); return; }
+  const n = e.target.dataset.new; if (n == null || !isApprover) return;
   const r = preview[+n]; e.target.disabled = true;
   const same = preview.filter(x => !x.itemId && x.name === r.name && (x.pack||"") === (r.pack||""));
   try {
@@ -496,8 +559,83 @@ async function saveItemPatch(id, patch){
     await db.doc("inv/state").set(st); state = st;
   });
 }
-$("#btnAddRow").onclick = () => { preview.push({itemId: items()[0]?.id || null, name: "", loc: defLoc, unit: "개", count: 0, delta: 0, reason: "포장", src: ""}); renderPreview(); };
-$("#btnCancel").onclick = () => { preview = []; warnings = []; renderPreview(); };
+$("#btnAddRow").onclick = () => { preview.push({itemId: items()[0]?.id || null, name: "", loc: defLoc, unit: "개", count: 0, delta: 0, reason: "포장", src: "", ok: false}); $("#confirmBox").hidden = true; renderPreview(); };
+$("#btnCancel").onclick = closeReview;
+$("#btnCheckAll").onclick = () => { preview.forEach(r => { if (!rowBad(r)) r.ok = true; }); renderPreview(); };
+
+// 1) staff: send for review
+$("#btnSendReview").onclick = async () => {
+  const b = $("#btnSendReview"); b.disabled = true; $("#applyStatus").textContent = "보내는 중…";
+  try {
+    const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+    await db.doc("pending/" + id).set({ at: new Date().toISOString(), by: whoName(), status: "대기", text: lastMsg.slice(0, 4000),
+      rows: preview.map(({ok, ...r}) => r), warnings });
+    closeReview(); $("#msg").value = ""; ls.set("draft", ""); $("#aiStatus").textContent = "";
+    toast("검토 요청을 보냈어요. 승인되면 재고에 반영돼요.");
+  } catch { $("#applyStatus").textContent = "보내지 못했어요. 잠시 후 다시 눌러주세요."; b.disabled = false; }
+};
+
+// 2) approver: summary → final approval
+$("#btnApply").onclick = () => {
+  const net = new Map();
+  for (const r of preview) { const k = r.itemId + ":" + r.loc; net.set(k, (net.get(k) || 0) + effDelta(r)); }
+  $("#sumBody").innerHTML = [...net].map(([k, d]) => {
+    const [id, loc] = k.split(":"); const now = qty(id, loc);
+    return `<tr><td>${esc(itemById(id)?.name)}</td><td>${LOCN[loc]}</td><td class="n num">${now}</td>
+      <td class="n"><span class="delta ${d>0?"p":d<0?"m":""}">${fmtD(d)}</span></td><td class="n num"><b class="${now + d < 0 ? "zero" : ""}">${now + d}</b></td></tr>`;
+  }).join("");
+  $("#confirmBox").hidden = false; $("#rejectBox").hidden = true; renderPreview();
+  $("#confirmBox").scrollIntoView({behavior: "smooth", block: "nearest"});
+};
+$("#btnBack").onclick = () => { $("#confirmBox").hidden = true; renderPreview(); };
+$("#btnFinal").onclick = async () => {
+  if (!db) return;
+  const btn = $("#btnFinal"); btn.disabled = true; $("#applyStatus").textContent = "반영 중…";
+  try {
+    const lines = preview.map(r => ({itemId: r.itemId, loc: r.loc, delta: effDelta(r), reason: r.reason}));
+    await commit(lines, "메시지", lastMsg, { by: reviewing ? reviewing.by : whoName(), approvedBy: whoName(), pendingId: reviewing?.id });
+    const fromPending = !!reviewing;
+    closeReview();
+    if (!fromPending){ $("#msg").value = ""; ls.set("draft", ""); $("#aiStatus").textContent = ""; }
+    toast("승인했어요. 재고에 반영됐어요.");
+  } catch (e) {
+    $("#applyStatus").textContent = e?.message && !e.code ? e.message : "반영하지 못했어요. 잠시 후 다시 눌러주세요.";
+  } finally { btn.disabled = false; }
+};
+$("#btnReject").onclick = () => { $("#rejectBox").hidden = false; $("#confirmBox").hidden = true; $("#rejectWhy").focus(); };
+$("#btnRejectBack").onclick = () => { $("#rejectBox").hidden = true; };
+$("#btnRejectOk").onclick = async () => {
+  if (!reviewing) return;
+  try {
+    await db.doc("pending/" + reviewing.id).update({ status: "반려", reason: $("#rejectWhy").value.trim(), reviewedBy: whoName(), reviewedAt: new Date().toISOString() });
+    $("#rejectWhy").value = ""; closeReview(); toast("반려했어요.");
+  } catch { toast("반려하지 못했어요."); }
+};
+
+// ---------- pending list ----------
+function renderPending(){
+  const waiting = pending.filter(p => p.status === "대기");
+  $("#pendBadge").hidden = !waiting.length; $("#pendBadge").textContent = waiting.length;
+  if (!pending.length){ $("#pendList").innerHTML = `<div class="empty">검토할 요청이 없어요. 근무자가 ‘검토 요청 보내기’를 누르면 여기에 쌓여요.</div>`; return; }
+  $("#pendList").innerHTML = pending.map(p => {
+    const rows = p.rows || [];
+    const chips = rows.slice(0, 8).map(r => `<span class="chip">${esc(itemById(r.itemId)?.name || r.name)} · ${LOCN[r.loc] || ""} <span class="delta ${(r.delta ?? r.count) > 0 ? "p" : "m"}">${r.unit === "박스" ? fmtD(r.count) + "박스" : fmtD(r.delta)}</span></span>`).join("") + (rows.length > 8 ? `<span class="chip">외 ${rows.length - 8}줄</span>` : "");
+    const rej = p.status === "반려";
+    return `<div class="entry">
+      <div class="meta"><span class="num">${esc(tFmt(p.at))}</span><span>${esc(p.by)}</span>
+        <span class="pill ${rej ? "neg" : "warn"}">${rej ? "반려" : "검토 대기"}</span><span>${rows.length}줄</span><span class="grow"></span>
+        ${!rej && isApprover ? `<button class="btn small primary" data-open="${esc(p.id)}">검토하기</button>` : ""}
+        ${rej ? `<button class="btn small" data-rm="${esc(p.id)}">지우기</button>` : ""}</div>
+      ${rej ? `<div class="note err">반려 이유: ${esc(p.reason || "적지 않음")} · ${esc(p.reviewedBy || "")}</div>` : ""}
+      <div class="chips">${chips}</div>
+      ${p.text ? `<details><summary>원문 메시지</summary><pre>${esc(p.text)}</pre></details>` : ""}</div>`;
+  }).join("");
+}
+$("#pendList").addEventListener("click", async e => {
+  const o = e.target.dataset.open, rm = e.target.dataset.rm;
+  if (o){ const p = pending.find(x => x.id === o); if (!p) return; showTab("input"); openReview(p.rows || [], p.warnings || [], p.text || "", {id: p.id, by: p.by, at: p.at}); }
+  if (rm){ try { await db.doc("pending/" + rm).delete(); } catch { toast("지우지 못했어요."); } }
+});
 
 // ---------- writes (with a short lease so two people don't overwrite each other) ----------
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -513,9 +651,13 @@ async function withLock(fn){
 }
 const dayKey = d => { const z = n => String(n).padStart(2,"0"); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; };
 
-async function commit(lines, kind, text){
+async function commit(lines, kind, text, opt = {}){
   // lines: [{itemId, loc, delta, reason}]
   return withLock(async () => {
+    if (opt.pendingId){
+      const p = await db.doc("pending/" + opt.pendingId).get();
+      if (!p.exists || p.data().status !== "대기") throw new Error("이미 처리된 요청이에요.");
+    }
     const snap = await db.doc("inv/state").get();
     const s = snap.exists ? structuredClone(snap.data()) : {items: [], stock: {}};
     s.stock ||= {};
@@ -530,27 +672,14 @@ async function commit(lines, kind, text){
     const ls2 = await ref.get();
     const doc = ls2.exists ? structuredClone(ls2.data()) : {day: key, entries: []};
     const entry = { id: "e" + now.getTime().toString(36) + Math.random().toString(36).slice(2,5), at: now.toISOString(),
-      by: $("#who").value.trim() || "이름 없음", kind, text: String(text||"").slice(0, 1500),
+      by: opt.by || whoName(), approvedBy: opt.approvedBy || "", kind, text: String(text||"").slice(0, 1500),
       lines: lines.map(l => ({itemId: l.itemId, name: itemById(l.itemId)?.name || l.name || l.itemId, loc: l.loc, delta: l.delta, reason: l.reason})) };
     doc.entries.push(entry);
     await ref.set(doc);
+    if (opt.pendingId) await db.doc("pending/" + opt.pendingId).delete();
     return entry;
   });
 }
-
-$("#btnApply").onclick = async () => {
-  if (!db) return;
-  const btn = $("#btnApply"); btn.disabled = true; $("#applyStatus").textContent = "저장 중…";
-  try {
-    await commit(preview.map(r => ({itemId: r.itemId, loc: r.loc, delta: effDelta(r), reason: r.reason})), "메시지", lastMsg);
-    preview = []; warnings = []; renderPreview();
-    $("#msg").value = ""; ls.set("draft", ""); $("#aiStatus").textContent = "";
-    toast("재고에 반영했어요.");
-  } catch (e) {
-    $("#applyStatus").textContent = e?.message && !e.code ? e.message : "저장하지 못했어요. 잠시 후 다시 눌러주세요.";
-    btn.disabled = false;
-  }
-};
 
 // ---------- stock table ----------
 function renderStock(){
@@ -604,10 +733,10 @@ function renderLog(){
     const t = new Date(e.at).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
     const chips = e.lines.map(l => `<span class="chip">${esc(itemById(l.itemId)?.name || l.name)} · ${LOCN[l.loc]} <span class="delta ${l.delta>0?"p":"m"}">${fmtD(l.delta)}</span></span>`).join("");
     return `<div class="entry${e.undone ? " undone" : ""}">
-      <div class="meta"><span class="num">${esc(t)}</span><span>${esc(e.by)}</span>
+      <div class="meta"><span class="num">${esc(t)}</span><span>${esc(e.by)}${e.approvedBy && e.approvedBy !== e.by ? " · 승인 " + esc(e.approvedBy) : ""}</span>
         <span class="pill ${e.kind==="되돌림"||e.undone?"neg":"acc"}">${e.undone ? "되돌림" : esc(e.kind)}</span>
         <span class="grow"></span>
-        ${!e.undone && e.kind !== "되돌림" && canWrite ? `<button class="btn small" data-undo="${esc(e.day)}|${esc(e.id)}">되돌리기</button>` : ""}</div>
+        ${!e.undone && e.kind !== "되돌림" && isApprover ? `<button class="btn small" data-undo="${esc(e.day)}|${esc(e.id)}">되돌리기</button>` : ""}</div>
       <div class="chips">${chips}</div>
       ${e.text ? `<details><summary>원문 메시지</summary><pre>${esc(e.text)}</pre></details>` : ""}</div>`;
   }).join("");
@@ -620,7 +749,7 @@ $("#logList").addEventListener("click", async e => {
   try {
     const ref = db.doc("logs/" + day); const snap = await ref.get(); if (!snap.exists) return;
     const entry = snap.data().entries.find(x => x.id === id); if (!entry || entry.undone) return;
-    await commit(entry.lines.map(l => ({...l, delta: -l.delta, reason: l.reason})), "되돌림", `${new Date(entry.at).toLocaleString("ko-KR")} 기록 되돌림`);
+    await commit(entry.lines.map(l => ({...l, delta: -l.delta, reason: l.reason})), "되돌림", `${new Date(entry.at).toLocaleString("ko-KR")} 기록 되돌림`, {approvedBy: whoName()});
     const s2 = await ref.get(); const d = structuredClone(s2.data());
     const x = d.entries.find(x => x.id === id); if (x){ x.undone = true; x.undoneAt = new Date().toISOString(); }
     await ref.set(d);
@@ -683,7 +812,7 @@ $("#btnSaveItems").onclick = async () => {
   } catch (e) { $("#itemsStatus").textContent = "저장하지 못했어요."; b.disabled = false; }
 };
 
-function renderAll(){ renderStock(); renderLog(); if (!editItems || JSON.stringify(editItems) === JSON.stringify(items())) { editItems = null; } renderItems(); if (preview.length) renderPreview(); }
+function renderAll(){ renderStock(); renderLog(); renderPending(); if (!editItems || JSON.stringify(editItems) === JSON.stringify(items())) { editItems = null; } renderItems(); if (preview.length) renderPreview(); }
 
 // ---------- boot ----------
 let unLog = null;
@@ -699,15 +828,27 @@ $("#btnMore").onclick = () => { logLimit += 14; subLogs(); };
   const [d, s, u] = await Promise.all([claude.use("db"), claude.use("sample"), claude.use("user")]);
   db = d; sample = s;
   if (!sample) { $("#btnAi").disabled = true; $("#aiStatus").textContent = "AI 분석을 쓸 수 없는 화면이에요. ‘빠른 분석’을 써주세요."; }
-  if (u) { try { const w = await u.can("data.write"); if (w === false) canWrite = false; } catch {} }
+  if (u) {
+    try { const w = await u.can("data.write"); if (w === false) canWrite = false; } catch {}
+    try { isApprover = await u.canEdit(); } catch {}
+  }
+  if (!isApprover){
+    $("#btnAdjust").hidden = true; $("#btnSaveItems").hidden = true; $("#btnAddItem").disabled = true;
+    $("#pendSub").textContent = "보낸 요청이 여기 보여요. 관리자가 승인하면 재고에 반영되고 목록에서 사라져요.";
+  }
   if (!db) { setSync("err", "재고표에 연결할 수 없어요"); $("#stockBody").innerHTML = `<tr><td colspan="4" class="empty">이 화면에서는 재고표에 연결할 수 없어요. claude.ai에서 열어주세요.</td></tr>`; return; }
   if (!canWrite){ ["#btnAdjust","#btnSaveItems","#btnAddItem"].forEach(x => $(x).disabled = true); }
   db.doc("inv/state").onSnapshot(snap => {
     state = snap.exists ? snap.data() : {items: [], stock: {}};
-    setSync("on", canWrite ? "실시간 연결됨" : "보기 전용");
+    setSync("on", !canWrite ? "보기 전용" : isApprover ? "관리자 · 실시간 연결됨" : "근무자 · 실시간 연결됨");
     renderAll();
   }, () => setSync("err", "연결이 끊겼어요. 새로고침해주세요."));
   subLogs();
+  db.collection("pending").orderBy("at", "desc").limit(100).onSnapshot(sn => {
+    pending = sn.docs.map(d => ({id: d.id, ...d.data()}));
+    renderPending();
+    if (reviewing && !pending.some(p => p.id === reviewing.id && p.status === "대기")) { closeReview(); toast("열어둔 요청이 다른 곳에서 처리됐어요."); }
+  }, () => {});
 })();
 })();
 </script>
