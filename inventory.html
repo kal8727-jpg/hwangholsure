@@ -288,6 +288,8 @@ const itemById = id => items().find(i => i.id === id);
 const qty = (id, loc) => state?.stock?.[id]?.[loc] ?? 0;
 const isWholesale = it => /도매/.test(it?.cat || "");
 const cats = list => [...new Set(list.map(i => i.cat))];
+// same name appears in several sections (레몬 마들렌/스콘/휘낭시에, 딸기우유 도매/소매/팝업) → add the section
+const label = (id, fallback) => { const it = itemById(id); if (!it) return fallback || id; return items().some(o => o.id !== it.id && o.name === it.name) ? `${it.name} (${it.cat})` : it.name; };
 
 // ---------- tabs ----------
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
@@ -328,7 +330,8 @@ ${catalogText()}
 - 포장만 한 줄(출고라는 말 없음, 출고 제목 아래 아님) = 그 품목 +.
 - 출고, 판매, 발송, 납품, 택배, 발주건 출고, 폐기, 파손 = 그 품목 -. "택배물량출고건", "발주건 출고함" 같은 제목 아래 줄은 모두 출고다.
 - "(도매->소매)"처럼 화살표가 있으면 포장 전환이다: 앞 포장 품목 -N, 뒤 포장 품목 +N (reason "전환"). 그 줄이 출고이기도 하면 뒤 포장 품목 -N 줄을 하나 더 넣는다(reason "출고"). 즉 "딸두쫀(도매->소매) 72x2 출고" = 딸기 두쫀쿠 도매 -144 전환, 딸기 두쫀쿠 소매 +144 전환, 딸기 두쫀쿠 소매 -144 출고.
-- 괄호 안에 "(소매)", "(팝업)"처럼 포장만 있으면 그 포장 품목이다. 포장이 안 적힌 품목은 출고면 소매로 본다.
+- 괄호 안에 "(소매)", "(팝업)"처럼 포장만 있으면 그 포장 품목이다. 마카롱 맛(딸기우유, 순수우유 등)은 '마카롱 도매/소매/팝업' 분류 중 맞는 포장을 고른다. 포장이 안 적힌 품목은 출고면 소매로 본다.
+- 같은 이름이 여러 분류에 있으면(레몬: 마들렌·스콘·휘낭시에) 메시지의 말(레몬마들렌, 레몬스콘)로 분류를 고른다.
 - 지점 이동("송도에서 부평으로 20 보냄") = 보낸 지점 -, 받은 지점 + (reason "이동").
 - 괄호 속 맛 목록처럼 수량 없는 설명, 인사, 날짜, 팀 이름은 무시한다. 같은 내용을 두 번 세지 않는다.
 - 목록에 없는 품목이면 itemId는 null, name에 정식 이름을 추측해서 쓰고(예: "순수우유"), pack에 포장 종류를 쓴다.
@@ -581,7 +584,7 @@ $("#btnApply").onclick = () => {
   for (const r of preview) { const k = r.itemId + ":" + r.loc; net.set(k, (net.get(k) || 0) + effDelta(r)); }
   $("#sumBody").innerHTML = [...net].map(([k, d]) => {
     const [id, loc] = k.split(":"); const now = qty(id, loc);
-    return `<tr><td>${esc(itemById(id)?.name)}</td><td>${LOCN[loc]}</td><td class="n num">${now}</td>
+    return `<tr><td>${esc(label(id))}</td><td>${LOCN[loc]}</td><td class="n num">${now}</td>
       <td class="n"><span class="delta ${d>0?"p":d<0?"m":""}">${fmtD(d)}</span></td><td class="n num"><b class="${now + d < 0 ? "zero" : ""}">${now + d}</b></td></tr>`;
   }).join("");
   $("#confirmBox").hidden = false; $("#rejectBox").hidden = true; renderPreview();
@@ -619,7 +622,7 @@ function renderPending(){
   if (!pending.length){ $("#pendList").innerHTML = `<div class="empty">검토할 요청이 없어요. 근무자가 ‘검토 요청 보내기’를 누르면 여기에 쌓여요.</div>`; return; }
   $("#pendList").innerHTML = pending.map(p => {
     const rows = p.rows || [];
-    const chips = rows.slice(0, 8).map(r => `<span class="chip">${esc(itemById(r.itemId)?.name || r.name)} · ${LOCN[r.loc] || ""} <span class="delta ${(r.delta ?? r.count) > 0 ? "p" : "m"}">${r.unit === "박스" ? fmtD(r.count) + "박스" : fmtD(r.delta)}</span></span>`).join("") + (rows.length > 8 ? `<span class="chip">외 ${rows.length - 8}줄</span>` : "");
+    const chips = rows.slice(0, 8).map(r => `<span class="chip">${esc(label(r.itemId, r.name))} · ${LOCN[r.loc] || ""} <span class="delta ${(r.delta ?? r.count) > 0 ? "p" : "m"}">${r.unit === "박스" ? fmtD(r.count) + "박스" : fmtD(r.delta)}</span></span>`).join("") + (rows.length > 8 ? `<span class="chip">외 ${rows.length - 8}줄</span>` : "");
     const rej = p.status === "반려";
     return `<div class="entry">
       <div class="meta"><span class="num">${esc(tFmt(p.at))}</span><span>${esc(p.by)}</span>
@@ -673,7 +676,7 @@ async function commit(lines, kind, text, opt = {}){
     const doc = ls2.exists ? structuredClone(ls2.data()) : {day: key, entries: []};
     const entry = { id: "e" + now.getTime().toString(36) + Math.random().toString(36).slice(2,5), at: now.toISOString(),
       by: opt.by || whoName(), approvedBy: opt.approvedBy || "", kind, text: String(text||"").slice(0, 1500),
-      lines: lines.map(l => ({itemId: l.itemId, name: itemById(l.itemId)?.name || l.name || l.itemId, loc: l.loc, delta: l.delta, reason: l.reason})) };
+      lines: lines.map(l => ({itemId: l.itemId, name: label(l.itemId, l.name), loc: l.loc, delta: l.delta, reason: l.reason})) };
     doc.entries.push(entry);
     await ref.set(doc);
     if (opt.pendingId) await db.doc("pending/" + opt.pendingId).delete();
@@ -731,7 +734,7 @@ function renderLog(){
   if (!all.length){ $("#logList").innerHTML = `<div class="empty">아직 기록이 없어요. 메시지를 적용하면 여기에 쌓여요.</div>`; return; }
   $("#logList").innerHTML = all.map(e => {
     const t = new Date(e.at).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
-    const chips = e.lines.map(l => `<span class="chip">${esc(itemById(l.itemId)?.name || l.name)} · ${LOCN[l.loc]} <span class="delta ${l.delta>0?"p":"m"}">${fmtD(l.delta)}</span></span>`).join("");
+    const chips = e.lines.map(l => `<span class="chip">${esc(label(l.itemId, l.name))} · ${LOCN[l.loc]} <span class="delta ${l.delta>0?"p":"m"}">${fmtD(l.delta)}</span></span>`).join("");
     return `<div class="entry${e.undone ? " undone" : ""}">
       <div class="meta"><span class="num">${esc(t)}</span><span>${esc(e.by)}${e.approvedBy && e.approvedBy !== e.by ? " · 승인 " + esc(e.approvedBy) : ""}</span>
         <span class="pill ${e.kind==="되돌림"||e.undone?"neg":"acc"}">${e.undone ? "되돌림" : esc(e.kind)}</span>
