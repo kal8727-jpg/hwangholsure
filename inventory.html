@@ -106,6 +106,11 @@ details pre{white-space:pre-wrap;font:13px/1.5 var(--f-body);margin:8px 0 0;colo
 .explain{font-size:12px;color:var(--muted);margin-top:3px}
 .badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:99px;background:var(--neg);color:var(--surface);font-size:11px;line-height:18px;text-align:center;font-family:var(--f-num)}
 .pill.warn{background:var(--warn-soft);color:var(--warn)}
+.cellbtn{all:unset;cursor:pointer;display:inline-block;min-width:44px;text-align:right;padding:4px 6px;border-radius:6px;border:1px dashed transparent}
+.cellbtn:hover,.cellbtn:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
+tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)}
+.editor .row{gap:8px}
+.editor input,.editor select{width:auto;padding:6px 8px;font-size:14px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
 @media (max-width:560px){.prev .src{display:none}.brand .sync{margin-left:0;width:100%}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -203,11 +208,11 @@ details pre{white-space:pre-wrap;font:13px/1.5 var(--f-body);margin:8px 0 0;colo
 <!-- 재고 현황 -->
 <section class="panel" id="p-stock" hidden>
   <div class="row">
-    <div class="grow"><h2>재고 현황</h2><p class="sub" id="stockSub">모든 변동이 합산된 현재 수량이에요.</p></div>
+    <div class="grow"><h2>재고 현황</h2><p class="sub" id="stockSub">숫자를 누르면 바로 고칠 수 있어요.</p></div>
     <input id="q" placeholder="품목 검색" style="max-width:180px">
-    <button class="btn" id="btnAdjust">실사 조정</button>
+    <button class="btn" id="btnAdjust">여러 칸 한 번에 고치기</button>
   </div>
-  <div class="note" id="adjustNote" hidden>직접 센 수량을 입력하세요. 차이만큼 ‘실사조정’으로 기록돼요.
+  <div class="note" id="adjustNote" hidden><span id="adjustTxt">직접 센 수량을 입력하세요. 차이만큼 ‘실사조정’으로 기록돼요.</span>
     <div class="row" style="margin-top:8px"><button class="btn primary small" id="btnAdjSave">조정 저장</button><button class="btn small" id="btnAdjCancel">취소</button></div>
   </div>
   <div class="card" style="padding:0">
@@ -270,6 +275,7 @@ let warnings = [];
 let lastMsg = "";
 let editItems = null;      // working copy for 품목 관리
 let adjusting = false;
+let editing = null;       // {id, loc} of the stock cell being edited
 let isApprover = true;    // owner/editors approve; staff only send review requests
 let pending = [];
 let reviewing = null;     // {id, by, at} when a sent request is open for review
@@ -463,7 +469,7 @@ function itemOptions(sel){
   }
   return h;
 }
-const effDelta = r => r.unit === "박스" ? (itemById(r.itemId)?.box ? Math.round(r.count * itemById(r.itemId).box) : null) : r.delta;
+const effDelta = r => r.target != null ? r.target - qty(r.itemId, r.loc) : r.unit === "박스" ? (itemById(r.itemId)?.box ? Math.round(r.count * itemById(r.itemId).box) : null) : r.delta;
 const rowBad = r => !r.itemId || !effDelta(r);
 const whoName = () => $("#who").value.trim() || "이름 없음";
 const tFmt = iso => new Date(iso).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
@@ -529,8 +535,8 @@ $("#prevBody").addEventListener("change", async e => {
   $("#confirmBox").hidden = true;
   if (f === "ok"){ r.ok = e.target.checked; renderPreview(); return; }
   r.ok = false; // any edit needs a fresh check
-  if (f === "delta"){ r.unit = "개"; r.delta = Math.trunc(Number(e.target.value) || 0); r.count = r.delta; }
-  else if (f === "itemId"){ r.itemId = e.target.value || null; r.name = itemById(r.itemId)?.name || r.name; }
+  if (f === "delta"){ delete r.target; r.unit = "개"; r.delta = Math.trunc(Number(e.target.value) || 0); r.count = r.delta; }
+  else if (f === "itemId"){ delete r.target; r.itemId = e.target.value || null; r.name = itemById(r.itemId)?.name || r.name; }
   else if (f === "box"){
     const n = Math.trunc(Number(e.target.value) || 0); if (n <= 0 || !r.itemId) return;
     try { await saveItemPatch(r.itemId, {box: n}); toast(`${itemById(r.itemId)?.name}: 박스당 ${n}개로 저장했어요.`); }
@@ -629,11 +635,11 @@ function renderPending(){
   if (!pending.length){ $("#pendList").innerHTML = `<div class="empty">검토할 요청이 없어요. 근무자가 ‘검토 요청 보내기’를 누르면 여기에 쌓여요.</div>`; return; }
   $("#pendList").innerHTML = pending.map(p => {
     const rows = p.rows || [];
-    const chips = rows.slice(0, 8).map(r => `<span class="chip">${esc(label(r.itemId, r.name))} · ${LOCN[r.loc] || ""} <span class="delta ${(r.delta ?? r.count) > 0 ? "p" : "m"}">${r.unit === "박스" ? fmtD(r.count) + "박스" : fmtD(r.delta)}</span></span>`).join("") + (rows.length > 8 ? `<span class="chip">외 ${rows.length - 8}줄</span>` : "");
+    const chips = rows.slice(0, 8).map(r => `<span class="chip">${esc(label(r.itemId, r.name))} · ${LOCN[r.loc] || ""} <span class="delta ${(r.delta ?? r.count) > 0 ? "p" : "m"}">${r.target != null ? "→ " + r.target + "개" : r.unit === "박스" ? fmtD(r.count) + "박스" : fmtD(r.delta)}</span></span>`).join("") + (rows.length > 8 ? `<span class="chip">외 ${rows.length - 8}줄</span>` : "");
     const rej = p.status === "반려";
     return `<div class="entry">
       <div class="meta"><span class="num">${esc(tFmt(p.at))}</span><span>${esc(p.by)}</span>
-        <span class="pill ${rej ? "neg" : "warn"}">${rej ? "반려" : "검토 대기"}</span><span>${rows.length}줄</span><span class="grow"></span>
+        <span class="pill ${rej ? "neg" : "warn"}">${rej ? "반려" : "검토 대기"}</span>${p.kind ? `<span class="pill">${esc(p.kind)}</span>` : ""}<span>${rows.length}줄</span><span class="grow"></span>
         ${!rej && isApprover ? `<button class="btn small primary" data-open="${esc(p.id)}">검토하기</button>` : ""}
         ${rej ? `<button class="btn small" data-rm="${esc(p.id)}">지우기</button>` : ""}</div>
       ${rej ? `<div class="note err">반려 이유: ${esc(p.reason || "적지 않음")} · ${esc(p.reviewedBy || "")}</div>` : ""}
@@ -706,21 +712,64 @@ function renderStock(){
       const cells = LOCS.map(l => {
         const v = qty(it.id, l.k);
         if (adjusting) return `<td class="n"><input type="number" inputmode="numeric" id="adj-${esc(it.id)}-${l.k}" data-id="${esc(it.id)}" data-loc="${l.k}" value="${v}" aria-label="${esc(it.name)} ${l.n}"></td>`;
-        return `<td class="n num ${v <= 0 ? "zero" : v < 20 ? "low" : ""}">${v}</td>`;
+        return `<td class="n num ${v <= 0 ? "zero" : v < 20 ? "low" : ""}"><button class="cellbtn" data-cell="${esc(it.id)}|${l.k}" aria-label="${esc(it.name)} ${l.n} ${v}개 고치기">${v}</button></td>`;
       }).join("");
       const tot = qty(it.id,"bp") + qty(it.id,"sd");
       h += `<tr><td>${esc(it.name)}</td>${cells}<td class="n num tot">${tot}</td></tr>`;
+      if (editing && editing.id === it.id) h += editorRow(it, editing.loc);
     }
   }
   body.innerHTML = h || `<tr><td colspan="4" class="empty">‘${esc($("#q").value)}’에 맞는 품목이 없어요.</td></tr>`;
   if (state.updatedAt) $("#stockSub").textContent = "마지막 변경 " + new Date(state.updatedAt).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
 }
+const EDIT_REASONS = ["실사조정","폐기","파손","출고","포장","기타"];
+function editorRow(it, loc){
+  const cur = qty(it.id, loc);
+  return `<tr class="editor"><td colspan="4"><div class="row">
+    <b>${esc(it.name)} · ${LOCN[loc]}</b><span class="num">${cur} →</span>
+    <input id="edVal" type="number" inputmode="numeric" value="${cur}" style="width:90px;text-align:right" aria-label="새 수량">
+    <select id="edWhy" aria-label="사유">${EDIT_REASONS.map(r => `<option>${r}</option>`).join("")}</select>
+    <input id="edMemo" placeholder="메모 (예: 파손 3개)" class="grow" style="min-width:120px" aria-label="메모">
+    <button class="btn primary small" id="edSave">${isApprover ? "저장" : "검토 요청"}</button>
+    <button class="btn small" id="edCancel">취소</button></div>
+    ${isApprover ? "" : `<div class="sub" style="margin-top:6px">관리자가 승인하면 반영돼요.</div>`}</td></tr>`;
+}
+// send "set to this number" rows for review (staff) — the delta is recomputed at approval time
+async function sendAdjustRequest(rows, text){
+  const id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+  await db.doc("pending/" + id).set({ at: new Date().toISOString(), by: whoName(), status: "대기", kind: "직접 수정", text,
+    rows: rows.map(r => ({ itemId: r.itemId, name: label(r.itemId), loc: r.loc, unit: "개", target: r.target,
+      delta: r.target - qty(r.itemId, r.loc), count: r.target - qty(r.itemId, r.loc), reason: r.reason, src: r.memo || "재고 직접 수정" })),
+    warnings: [] });
+}
+$("#stockBody").addEventListener("click", async e => {
+  const c = e.target.closest("[data-cell]");
+  if (c){ if (!canWrite) return toast("보기 권한만 있어요."); const [id, loc] = c.dataset.cell.split("|"); editing = {id, loc}; renderStock(); $("#edVal")?.focus(); $("#edVal")?.select(); return; }
+  if (e.target.id === "edCancel"){ editing = null; renderStock(); return; }
+  if (e.target.id !== "edSave" || !editing) return;
+  const {id, loc} = editing; const target = Math.trunc(Number($("#edVal").value));
+  if (!Number.isFinite(target) || $("#edVal").value === "") return toast("수량을 숫자로 넣어주세요.");
+  const cur = qty(id, loc), reason = $("#edWhy").value, memo = $("#edMemo").value.trim();
+  if (target === cur){ editing = null; renderStock(); return; }
+  e.target.disabled = true;
+  try {
+    if (isApprover){
+      await commit([{itemId: id, loc, delta: target - cur, reason}], "직접 수정", `${label(id)} ${LOCN[loc]} ${cur} → ${target}${memo ? " · " + memo : ""}`);
+      toast("고쳤어요. 변동 기록에서 되돌릴 수 있어요.");
+    } else {
+      await sendAdjustRequest([{itemId: id, loc, target, reason, memo}], `재고 직접 수정: ${label(id)} ${LOCN[loc]} ${cur} → ${target}${memo ? " · " + memo : ""}`);
+      toast("검토 요청을 보냈어요. 승인되면 반영돼요.");
+    }
+    editing = null; renderStock();
+  } catch (err) { toast(err?.message && !err.code ? err.message : "저장하지 못했어요."); e.target.disabled = false; }
+});
+$("#stockBody").addEventListener("keydown", e => { if (e.key === "Enter" && editing && e.target.closest("tr.editor")) { e.preventDefault(); $("#edSave")?.click(); } if (e.key === "Escape" && editing) $("#edCancel")?.click(); });
 $("#q").oninput = renderStock;
 $("#stockBody").addEventListener("input", e => {
   const t = e.target; if (!t.dataset.id) return;
   t.closest("tr").classList.toggle("changed", [...t.closest("tr").querySelectorAll("input")].some(x => Number(x.value) !== qty(x.dataset.id, x.dataset.loc)));
 });
-$("#btnAdjust").onclick = () => { if (!canWrite) return toast("보기 권한만 있어요."); adjusting = true; $("#adjustNote").hidden = false; $("#btnAdjust").hidden = true; renderStock(); };
+$("#btnAdjust").onclick = () => { if (!canWrite) return toast("보기 권한만 있어요."); editing = null; adjusting = true; $("#btnAdjSave").textContent = isApprover ? "저장" : "검토 요청 보내기"; $("#adjustNote").hidden = false; $("#btnAdjust").hidden = true; renderStock(); };
 $("#btnAdjCancel").onclick = () => { adjusting = false; $("#adjustNote").hidden = true; $("#btnAdjust").hidden = false; renderStock(); };
 $("#btnAdjSave").onclick = async () => {
   const lines = [];
@@ -730,7 +779,15 @@ $("#btnAdjSave").onclick = async () => {
   });
   if (!lines.length) return $("#btnAdjCancel").onclick();
   const b = $("#btnAdjSave"); b.disabled = true;
-  try { await commit(lines, "실사조정", ""); toast(`${lines.length}칸을 조정했어요.`); $("#btnAdjCancel").onclick(); }
+  try {
+    if (isApprover){ await commit(lines, "실사조정", ""); toast(`${lines.length}칸을 고쳤어요.`); }
+    else {
+      const rows = lines.map(l => ({itemId: l.itemId, loc: l.loc, target: qty(l.itemId, l.loc) + l.delta, reason: "실사조정"}));
+      await sendAdjustRequest(rows, "재고 직접 수정 (여러 칸)\n" + rows.map(r => `${label(r.itemId)} ${LOCN[r.loc]} ${qty(r.itemId, r.loc)} → ${r.target}`).join("\n"));
+      toast("검토 요청을 보냈어요. 승인되면 반영돼요.");
+    }
+    $("#btnAdjCancel").onclick();
+  }
   catch (e) { toast(e?.message && !e.code ? e.message : "저장하지 못했어요."); }
   finally { b.disabled = false; }
 };
@@ -822,7 +879,7 @@ $("#btnSaveItems").onclick = async () => {
   } catch (e) { $("#itemsStatus").textContent = "저장하지 못했어요."; b.disabled = false; }
 };
 
-function renderAll(){ renderStock(); renderLog(); renderPending(); if (!editItems || JSON.stringify(editItems) === JSON.stringify(items())) { editItems = null; } renderItems(); if (preview.length) renderPreview(); }
+function renderAll(){ if (!adjusting && !editing) renderStock(); renderLog(); renderPending(); if (!editItems || JSON.stringify(editItems) === JSON.stringify(items())) { editItems = null; } renderItems(); if (preview.length) renderPreview(); }
 
 // ---------- boot ----------
 let unLog = null;
@@ -843,11 +900,11 @@ $("#btnMore").onclick = () => { logLimit += 14; subLogs(); };
     try { isApprover = await u.canEdit(); } catch {}
   }
   if (!isApprover){
-    $("#btnAdjust").hidden = true; $("#btnSaveItems").hidden = true; $("#btnAddItem").disabled = true;
+    $("#adjustTxt").textContent = "직접 센 수량을 입력하세요. 관리자가 승인하면 반영돼요."; $("#btnSaveItems").hidden = true; $("#btnAddItem").disabled = true;
     $("#pendSub").textContent = "보낸 요청이 여기 보여요. 관리자가 승인하면 재고에 반영되고 목록에서 사라져요.";
   }
   if (!db) { setSync("err", "재고표에 연결할 수 없어요"); $("#stockBody").innerHTML = `<tr><td colspan="4" class="empty">이 화면에서는 재고표에 연결할 수 없어요. claude.ai에서 열어주세요.</td></tr>`; return; }
-  if (!canWrite){ ["#btnAdjust","#btnSaveItems","#btnAddItem"].forEach(x => $(x).disabled = true); }
+  if (!canWrite){ ["#btnAdjust","#btnSaveItems","#btnAddItem"].forEach(x => $(x).disabled = true); $("#stockSub").textContent = "보기 전용이에요."; }
   db.doc("inv/state").onSnapshot(snap => {
     state = snap.exists ? snap.data() : {items: [], stock: {}};
     setSync("on", !canWrite ? "보기 전용" : isApprover ? "관리자 · 실시간 연결됨" : "근무자 · 실시간 연결됨");
