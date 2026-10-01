@@ -166,12 +166,12 @@ tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)
     <div class="row">
       <button class="btn primary" id="btnAi">AI로 분석</button>
       <button class="btn" id="btnLocal">빠른 분석 (AI 없이)</button>
-      <span class="photo-ctl" id="photoCtl" hidden>
+      <span class="photo-ctl" id="photoCtl">
         <select id="photoKind" aria-label="사진 종류" style="width:auto">
           <option value="remain">부평 남은 수량 체크지</option>
           <option value="memo">포장·출고 메모</option>
         </select>
-        <label class="btn" for="photo">사진으로 분석</label>
+        <label class="btn" for="photo" id="photoBtn">사진으로 분석</label>
         <input type="file" id="photo" accept="image/*" multiple hidden>
       </span>
       <button class="btn" id="btnClear">지우기</button>
@@ -1087,7 +1087,12 @@ $("#btnMore").onclick = () => { logLimit += 14; subLogs(); };
 (async () => {
   const [d, s, u] = await Promise.all([claude.use("db"), claude.use("sample"), claude.use("user")]);
   db = d; sample = s;
-  if (sample) { try { const lim = await sample.limits(); $("#photoCtl").hidden = !lim?.images; if (lim?.images) $("#photo").accept = lim.images.mediaTypes.join(","); } catch {} }
+  let photoOk = false;
+  if (sample) { try { const lim = await sample.limits(); photoOk = !!lim?.images; if (photoOk) $("#photo").accept = lim.images.mediaTypes.join(","); } catch {} }
+  if (!photoOk) {
+    $("#photo").disabled = true;
+    $("#photoBtn").onclick = ev => { ev.preventDefault(); $("#aiStatus").textContent = "이 화면에서는 사진 분석이 안 돼요. 휴대폰 인터넷(크롬·삼성 인터넷)으로 claude.ai에 로그인해서 이 재고장을 열면 쓸 수 있어요. 아니면 사진을 Claude 대화창에 보내주세요."; };
+  }
   if (!sample) { $("#btnAi").disabled = true; $("#aiStatus").textContent = "AI 분석을 쓸 수 없는 화면이에요. ‘빠른 분석’을 써주세요."; }
   if (u) {
     try { const w = await u.can("data.write"); if (w === false) canWrite = false; } catch {}
