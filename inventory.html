@@ -245,10 +245,10 @@ tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)
 
 <!-- 품목 관리 -->
 <section class="panel" id="p-items" hidden>
-  <div><h2>품목 관리</h2><p class="sub">근무자들이 쓰는 줄임말(딸두쫀, 레.마 등)을 별칭에 쉼표로 넣고, 박스로 세는 품목은 박스당 개수를 넣어두면 분석이 정확해져요.</p></div>
+  <div><h2>품목 관리</h2><p class="sub">근무자들이 쓰는 줄임말(딸두쫀, 레.마 등)을 별칭에 쉼표로 넣고, 박스로 세는 품목은 박스당 개수를 넣어두면 분석이 정확해져요. 4구 같은 세트는 ‘세트 구성’에 들어가는 맛을 쉼표로 넣으면, 세트를 만들 때 마카롱 소매에서 먼저, 모자라면 도매에서 자동으로 빠져요.</p></div>
   <div class="card" style="padding:0">
     <div class="scroll"><table class="items">
-      <thead><tr><th>분류</th><th>이름</th><th>별칭·줄임말</th><th class="n">박스당</th><th></th></tr></thead>
+      <thead><tr><th>분류</th><th>이름</th><th>별칭·줄임말</th><th class="n">박스당</th><th>세트 구성</th><th></th></tr></thead>
       <tbody id="itemsBody"></tbody>
     </table></div>
   </div>
@@ -272,7 +272,7 @@ tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)
 (() => {
 const LOCS = [{k:"bp", n:"부평"}, {k:"sd", n:"송도"}];
 const LOCN = {bp:"부평", sd:"송도"};
-const REASONS = ["포장","출고","폐기","이동","전환","잔량확인","실사조정","기타"];
+const REASONS = ["포장","조립","출고","폐기","이동","전환","잔량확인","실사조정","기타"];
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm = s => String(s || "").replace(/[\s·.,()\[\]]/g, "").toLowerCase();
@@ -335,7 +335,7 @@ $("#msg").oninput = e => ls.set("draft", e.target.value);
 
 // ---------- parsing: AI ----------
 function catalogText(){
-  return items().map(i => `${i.id} | ${i.cat} | ${i.name} | ${i.box || "?"} | ${(i.aliases||[]).join(", ")}`).join("\n");
+  return items().map(i => `${i.id} | ${i.cat} | ${i.name} | ${i.box || "?"} | ${(i.aliases||[]).join(", ")}${i.components?.length ? " | 세트 구성: " + i.components.join(", ") : ""}`).join("\n");
 }
 function aiPrompt(msg){
   return `너는 디저트 브랜드 '황홀스레'의 재고 기록 도우미다. 근무자가 단톡방에 남긴 메시지를 읽고 재고 변동 목록으로 바꿔라.
@@ -371,6 +371,7 @@ ${catalogText()}
 
 오직 이 모양의 JSON 하나로만 답하라. qty는 부호가 있는 수(증가 +, 감소 -):
 {"changes":[{"itemId":"r3","name":"딸기","pack":"소매","loc":"송도","unit":"개","qty":-144,"reason":"출고","src":"딸두쫀 72x2 출고"}],"warnings":[]}
+세트 품목(목록에 "세트 구성"이 있는 품목, 예: 마카롱4구 유베니)을 만들었으면 그 세트 품목 +N 한 줄만 넣고 reason은 "조립"으로 한다. 구성 마카롱을 빼는 줄은 넣지 마라(앱이 소매 먼저, 모자라면 도매에서 자동으로 뺀다). 메시지에 "도매 기존꺼로", "소매에서"처럼 꺼낸 곳이 적혀 있으면 그 줄에 "source":"도매" 또는 "source":"소매"를 넣는다. 만든 세트를 바로 출고·이동했으면 조립 줄 다음에 출고·이동 줄을 넣는다.
 reason은 포장, 출고, 폐기, 이동, 전환, 기타 중 하나.
 
 메시지:
@@ -404,11 +405,11 @@ $("#btnAi").onclick = async () => {
       }
       return { itemId: it?.id || null, name: it?.name || String(c.name||"?"), pack: ["도매","소매","팝업"].includes(c.pack) ? c.pack : "소매",
                loc, unit, count: q, delta: unit === "개" ? Math.round(q) : null,
-               reason: REASONS.includes(c.reason) ? c.reason : "기타", src: String(c.src||"").slice(0,120) };
+               reason: REASONS.includes(c.reason) ? c.reason : "기타", src: String(c.src||"").slice(0,120), source: ["도매","소매"].includes(c.source) ? c.source : null };
     }).filter(r => r.target != null || r.count !== 0);
-    const rows = preview;
+    const ex = expandSets(preview); const rows = ex.rows;
     $("#aiStatus").textContent = rows.length ? "" : "재고 변동을 찾지 못했어요.";
-    openReview(rows, (Array.isArray(res?.warnings) ? res.warnings : []).map(String), msg, null);
+    openReview(rows, [...ex.warns, ...(Array.isArray(res?.warnings) ? res.warnings : []).map(String)], msg, null);
   } catch (e) {
     const m = {
       not_granted: "AI 사용을 허용하지 않아 분석하지 못했어요. ‘빠른 분석’을 쓰거나 새로고침 후 허용해주세요.",
@@ -483,7 +484,7 @@ $("#btnLocal").onclick = () => {
   if (!state) return toast("재고표를 아직 불러오지 못했어요.");
   const r = localParse(msg);
   $("#aiStatus").textContent = r.out.length ? "" : "재고 변동을 찾지 못했어요.";
-  openReview(r.out, r.warns, msg, null);
+  const ex = expandSets(r.out); openReview(ex.rows, [...ex.warns, ...r.warns], msg, null);
 };
 $("#btnClear").onclick = () => { $("#msg").value = ""; ls.set("draft",""); closeReview(); $("#aiStatus").textContent = ""; };
 
@@ -504,6 +505,35 @@ function explain(r, d){
   if (r.target != null) return `${LOCN[r.loc]} ‘${esc(it.name)}’ 남은 수량 ${r.target}개로 맞춤 (${d ? fmtD(d) : "변동 없음"})`;
   if (isTransit({reason: r.reason, delta: d})) return `${LOCN[other(r.loc)]} → ${LOCN[r.loc]} ‘${esc(it.name)}’ ${d}개 이동 중 · 받음 확인 후 반영`;
   return `${LOCN[r.loc]} ${esc(it.cat)} ‘${esc(it.name)}’ ${Math.abs(d)}개 ${d > 0 ? "늘어남" : "줄어듦"} · ${esc(r.reason)}`;
+}
+// a set (e.g. 마카롱4구 유베니) uses one of each component per set: take from 소매 first, then 도매
+function expandSets(rows){
+  const out = [], warns = [], used = {};
+  const avail = (id, loc) => qty(id, loc) - (used[id + ":" + loc] || 0);
+  const take = (id, loc, n) => { used[id + ":" + loc] = (used[id + ":" + loc] || 0) + n; };
+  for (const r of rows) {
+    out.push(r);
+    const set = itemById(r.itemId); const n = effDelta(r);
+    if (!set?.components?.length || r.reason !== "조립" || !(n > 0)) continue;
+    for (const comp of set.components) {
+      const retail = items().find(i => i.name === comp && /소매/.test(i.cat) && i.id !== set.id);
+      const whole = items().find(i => i.name === comp && /도매/.test(i.cat) && i.id !== set.id);
+      if (!retail && !whole){ warns.push(`‘${set.name}’ 구성품 ‘${comp}’을 품목 목록에서 찾지 못했어요.`); continue; }
+      let fromRetail = 0, fromWhole = 0;
+      if (r.source === "도매" && whole) fromWhole = n;
+      else if (r.source === "소매" && retail) fromRetail = n;
+      else {
+        fromRetail = retail ? Math.min(n, Math.max(0, avail(retail.id, r.loc))) : 0;
+        fromWhole = n - fromRetail;
+        if (fromWhole && !whole){ fromRetail = n; fromWhole = 0; }
+      }
+      const src = `${set.name} ${n}개 재료`;
+      if (fromRetail){ take(retail.id, r.loc, fromRetail); out.push({itemId: retail.id, name: retail.name, loc: r.loc, unit: "개", count: -fromRetail, delta: -fromRetail, reason: "전환", src}); }
+      if (fromWhole){ take(whole.id, r.loc, fromWhole); out.push({itemId: whole.id, name: whole.name, loc: r.loc, unit: "개", count: -fromWhole, delta: -fromWhole, reason: "전환", src}); }
+      if (whole && fromWhole > 0 && avail(whole.id, r.loc) < 0) warns.push(`${LOCN[r.loc]} ${comp}(소매+도매)가 ${-avail(whole.id, r.loc)}개 모자라요. 재고를 확인해 주세요.`);
+    }
+  }
+  return {rows: out, warns};
 }
 function openReview(rows, warns, msg, meta){
   const tm = inTransit(); warns = [...warns];
@@ -950,15 +980,16 @@ function renderItems(){
     <td><input class="nm" data-f="name" value="${esc(it.name)}" aria-label="이름" id="in-${esc(it.id)}"></td>
     <td><input class="al" data-f="aliases" value="${esc((it.aliases||[]).join(", "))}" aria-label="별칭" id="ia-${esc(it.id)}"></td>
     <td><input data-f="box" type="number" inputmode="numeric" value="${it.box || ""}" placeholder="—" aria-label="박스당 개수" id="ib-${esc(it.id)}" style="width:68px;text-align:right"></td>
+    <td><input data-f="components" value="${esc((it.components||[]).join(", "))}" placeholder="세트만 (예: 뽀또, 인절미)" aria-label="세트 구성" id="ik-${esc(it.id)}" style="min-width:150px"></td>
     <td style="white-space:nowrap"><button class="x" data-mv="-1" aria-label="위로">↑</button><button class="x" data-mv="1" aria-label="아래로">↓</button><button class="x" data-rm aria-label="삭제">×</button></td></tr>`).join("")
-    : `<tr><td colspan="5" class="empty">품목이 없어요. 아래에서 추가하세요.</td></tr>`;
+    : `<tr><td colspan="6" class="empty">품목이 없어요. 아래에서 추가하세요.</td></tr>`;
   const dirty = JSON.stringify(editItems) !== JSON.stringify(items());
   $("#btnSaveItems").disabled = !dirty || !canWrite;
   $("#itemsStatus").textContent = dirty ? "저장하지 않은 변경이 있어요." : "";
 }
 $("#itemsBody").addEventListener("input", e => {
   const tr = e.target.closest("tr"); const it = editItems[+tr.dataset.i]; const f = e.target.dataset.f;
-  it[f] = f === "aliases" ? e.target.value.split(",").map(s => s.trim()).filter(Boolean) : f === "box" ? Math.max(0, Math.trunc(Number(e.target.value) || 0)) : e.target.value;
+  it[f] = f === "aliases" || f === "components" ? e.target.value.split(",").map(s => s.trim()).filter(Boolean) : f === "box" ? Math.max(0, Math.trunc(Number(e.target.value) || 0)) : e.target.value;
   const dirty = JSON.stringify(editItems) !== JSON.stringify(items());
   $("#btnSaveItems").disabled = !dirty || !canWrite; $("#itemsStatus").textContent = dirty ? "저장하지 않은 변경이 있어요." : "";
 });
@@ -986,7 +1017,7 @@ $("#btnSaveItems").onclick = async () => {
     await withLock(async () => {
       const snap = await db.doc("inv/state").get();
       const s = snap.exists ? structuredClone(snap.data()) : {items: [], stock: {}};
-      s.items = editItems.map(i => ({id: i.id, cat: i.cat.trim(), name: i.name.trim(), aliases: i.aliases || [], box: i.box || 0}));
+      s.items = editItems.map(i => ({id: i.id, cat: i.cat.trim(), name: i.name.trim(), aliases: i.aliases || [], box: i.box || 0, ...(i.components?.length ? {components: i.components} : {})}));
       s.stock ||= {}; s.items.forEach(i => s.stock[i.id] ||= {bp: 0, sd: 0});
       s.updatedAt = new Date().toISOString();
       await db.doc("inv/state").set(s);
