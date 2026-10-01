@@ -272,7 +272,7 @@ tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)
 (() => {
 const LOCS = [{k:"bp", n:"부평"}, {k:"sd", n:"송도"}];
 const LOCN = {bp:"부평", sd:"송도"};
-const REASONS = ["포장","출고","폐기","이동","전환","실사조정","기타"];
+const REASONS = ["포장","출고","폐기","이동","전환","잔량확인","실사조정","기타"];
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const norm = s => String(s || "").replace(/[\s·.,()\[\]]/g, "").toLowerCase();
@@ -363,6 +363,7 @@ ${catalogText()}
   · "스트로베리"는 "딸기"와 같은 말이다. 딸기 두바이 = 스트로베리 두바이 = 딸기 두쫀쿠.
 - 재고는 포장이 끝난 수량만 센다. "바트"는 띠지·표시사항·스티커 없이 도매 포장까지 된 상태라 재고다: 화두쫀·흑두쫀·대왕두쫀 바트는 해당 두쫀쿠 x(도매) 품목, 두쫀쿠 A/S 바트는 '두쫀쿠 x (A/S 필요)'. 생산만 하고 포장 전인 것(렉, 건조 중, 생산 완료, 굽기 등)은 재고 변동으로 넣지 말고 무시한다. 나중에 포장하면 그때 포장 수량으로 + 한다.
 - 같은 이름이 여러 분류에 있으면(레몬: 마들렌·스콘·휘낭시에) 메시지의 말(레몬마들렌, 레몬스콘)로 분류를 고른다.
+- 남은 수량(잔량) 보고: "남은 수량", "잔여", "남은거", "재고", "택배 다 나가고 남은 것" 처럼 지금 남아 있는 개수를 알려주는 줄은 증감(qty)이 아니라 remain에 그 숫자를 넣고 qty는 0으로 둔다. 박스로 말하면 remain은 박스 수, remainUnit "박스". 예: {"itemId":"r1","name":"두쫀쿠","loc":"부평","remain":35,"qty":0,"reason":"잔량확인","src":"두쫀쿠 35 남음"}. 부평 직원이 보내는 남은 수량 보고는 보통 부평이다. 남은 수량 메시지에 안 나온 품목은 넣지 않는다(0으로 만들지 않는다). 한 메시지에 출고 수량과 남은 수량이 같이 있으면 남은 수량만 쓰고 그 품목의 출고 줄은 넣지 않는다(중복 차감 방지).
 - 지점 이동("송도에서 부평으로 20 보냄", "부평 보낼 것 20") = 보낸 지점 -20, 받은 지점 +20 두 줄 (reason "이동"). 부평은 생산을 하지 않고 송도에서 받은 것만 내보낸다. 송도 11층·8층은 모두 "송도"다.
 - "부평 도착", "받음", "부평에서 세어보니" 같은 받는 쪽 확인은 재고 변동으로 넣지 말고 warnings에 "받음 확인은 ‘부평 이동’ 탭에서 해주세요"라고 적는다.
 - 괄호 속 맛 목록처럼 수량 없는 설명, 인사, 날짜, 팀 이름은 무시한다. 같은 내용을 두 번 세지 않는다.
@@ -395,10 +396,16 @@ $("#btnAi").onclick = async () => {
       const loc = c.loc === "부평" ? "bp" : c.loc === "송도" ? "sd" : defLoc;
       const unit = c.unit === "박스" ? "박스" : "개";
       const q = Number(c.qty) || 0;
+      if (c.remain != null && Number.isFinite(Number(c.remain))) {
+        const box = it?.box || 0;
+        const target = Math.max(0, Math.round(c.remainUnit === "박스" && box ? Number(c.remain) * box : Number(c.remain)));
+        return { itemId: it?.id || null, name: it?.name || String(c.name||"?"), pack: ["도매","소매","팝업"].includes(c.pack) ? c.pack : "소매",
+                 loc, unit: "개", target, count: 0, delta: null, reason: "잔량확인", src: String(c.src||"").slice(0,120) };
+      }
       return { itemId: it?.id || null, name: it?.name || String(c.name||"?"), pack: ["도매","소매","팝업"].includes(c.pack) ? c.pack : "소매",
                loc, unit, count: q, delta: unit === "개" ? Math.round(q) : null,
                reason: REASONS.includes(c.reason) ? c.reason : "기타", src: String(c.src||"").slice(0,120) };
-    }).filter(r => r.count !== 0);
+    }).filter(r => r.target != null || r.count !== 0);
     const rows = preview;
     $("#aiStatus").textContent = rows.length ? "" : "재고 변동을 찾지 못했어요.";
     openReview(rows, (Array.isArray(res?.warnings) ? res.warnings : []).map(String), msg, null);
@@ -489,15 +496,19 @@ function itemOptions(sel){
   return h;
 }
 const effDelta = r => r.target != null ? r.target - qty(r.itemId, r.loc) : r.unit === "박스" ? (itemById(r.itemId)?.box ? Math.round(r.count * itemById(r.itemId).box) : null) : r.delta;
-const rowBad = r => !r.itemId || !effDelta(r);
+const rowBad = r => !r.itemId || (r.target != null ? false : !effDelta(r));
 const whoName = () => $("#who").value.trim() || "이름 없음";
 const tFmt = iso => new Date(iso).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
 function explain(r, d){
-  const it = itemById(r.itemId); if (!it || d == null || !d) return "";
+  const it = itemById(r.itemId); if (!it || d == null || (!d && r.target == null)) return "";
+  if (r.target != null) return `${LOCN[r.loc]} ‘${esc(it.name)}’ 남은 수량 ${r.target}개로 맞춤 (${d ? fmtD(d) : "변동 없음"})`;
   if (isTransit({reason: r.reason, delta: d})) return `${LOCN[other(r.loc)]} → ${LOCN[r.loc]} ‘${esc(it.name)}’ ${d}개 이동 중 · 받음 확인 후 반영`;
   return `${LOCN[r.loc]} ${esc(it.cat)} ‘${esc(it.name)}’ ${Math.abs(d)}개 ${d > 0 ? "늘어남" : "줄어듦"} · ${esc(r.reason)}`;
 }
 function openReview(rows, warns, msg, meta){
+  const tm = inTransit(); warns = [...warns];
+  const pendingIn = [...new Set(rows.filter(r => r.target != null && tm[r.itemId + ":" + r.loc]).map(r => label(r.itemId)))];
+  if (pendingIn.length) warns.unshift(`아직 받음 확인 안 된 이동이 있어요 (${pendingIn.slice(0,5).join(", ")}${pendingIn.length > 5 ? " 외" : ""}). ‘부평 이동’ 탭에서 받음 확인을 먼저 하고 남은 수량을 적용해야 중복이 안 생겨요.`);
   preview = rows.map(r => ({...r, ok: false})); warnings = warns; lastMsg = msg; reviewing = meta;
   $("#confirmBox").hidden = true; $("#rejectBox").hidden = true;
   renderPreview();
@@ -527,8 +538,8 @@ function renderPreview(){
       if (isTransit({reason: r.reason, delta: d})) after = `<span class="sub">이동 중으로 · 부평 받음 확인 후 반영</span>`;
       else { run[k] = before + d; after = `<span class="num">${before} → <b class="${run[k] < 0 ? "zero" : ""}">${run[k]}</b></span>`; }
     }
-    if (!d) bad = true;
-    const boxNote = r.unit === "박스" ? `<div class="sub num">${r.count}박스${itemById(r.itemId)?.box ? " × " + itemById(r.itemId).box : ""}</div>` : "";
+    if (!d && r.target == null) bad = true;
+    const boxNote = r.target != null ? `<div class="sub num">남은 ${r.target}개</div>` : r.unit === "박스" ? `<div class="sub num">${r.count}박스${itemById(r.itemId)?.box ? " × " + itemById(r.itemId).box : ""}</div>` : "";
     return `<tr class="${bad ? "bad" : r.ok ? "ok" : ""}" data-i="${i}">
       <td><input type="checkbox" data-f="ok" ${r.ok ? "checked" : ""} ${bad || !isApprover ? "disabled" : ""} aria-label="이 줄 확인"></td>
       <td><select data-f="itemId" aria-label="품목">${itemOptions(r.itemId)}</select><div class="explain">${explain(r, d)}</div></td>
@@ -630,7 +641,7 @@ $("#btnFinal").onclick = async () => {
   if (!db) return;
   const btn = $("#btnFinal"); btn.disabled = true; $("#applyStatus").textContent = "반영 중…";
   try {
-    const lines = preview.map(r => ({itemId: r.itemId, loc: r.loc, delta: effDelta(r), reason: r.reason}));
+    const lines = preview.map(r => ({itemId: r.itemId, loc: r.loc, delta: effDelta(r), reason: r.reason})).filter(l => l.delta);
     await commit(lines, "메시지", lastMsg, { by: reviewing ? reviewing.by : whoName(), approvedBy: whoName(), pendingId: reviewing?.id });
     const fromPending = !!reviewing;
     closeReview();
