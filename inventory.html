@@ -111,6 +111,8 @@ details pre{white-space:pre-wrap;font:13px/1.5 var(--f-body);margin:8px 0 0;colo
 tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)}
 .editor .row{gap:8px}
 .editor input,.editor select{width:auto;padding:6px 8px;font-size:14px}
+.recv{width:84px;text-align:right;font-family:var(--f-num);padding:5px 7px}
+.intransit{display:block;font-size:11px;color:var(--warn);font-family:var(--f-body)}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
 @media (max-width:560px){.prev .src{display:none}.brand .sync{margin-left:0;width:100%}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -126,6 +128,7 @@ tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)
       <button role="tab" data-tab="input" aria-selected="true">메시지 입력</button>
       <button role="tab" data-tab="pending" aria-selected="false">검토 대기 <span class="badge" id="pendBadge" hidden>0</span></button>
       <button role="tab" data-tab="stock" aria-selected="false">재고 현황</button>
+      <button role="tab" data-tab="move" aria-selected="false">부평 이동 <span class="badge" id="moveBadge" hidden>0</span></button>
       <button role="tab" data-tab="log" aria-selected="false">변동 기록</button>
       <button role="tab" data-tab="items" aria-selected="false">품목 관리</button>
     </nav>
@@ -223,6 +226,16 @@ tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)
   </div>
 </section>
 
+<!-- 부평 이동 -->
+<section class="panel" id="p-move" hidden>
+  <div><h2>송도 → 부평 이동</h2><p class="sub">송도에서 보낸 수량은 ‘이동 중’으로 잡혀 있다가, 부평에서 실제로 센 수량을 넣고 받음 확인을 하면 부평 재고에 들어가요. 모자란 만큼은 이동 로스로 남아요.</p></div>
+  <div class="card" id="lossCard">
+    <div class="row"><h2 class="grow">이동 로스</h2><span class="sub" id="lossRange"></span></div>
+    <div id="lossBody" class="sub">받음 확인이 끝난 이동이 생기면 여기에 쌓여요.</div>
+  </div>
+  <div class="log" id="moveList"><div class="empty">이동 기록이 없어요. 단톡 메시지에 “부평으로 두쫀쿠 300 보냄”처럼 적고 승인하면 여기에 생겨요.</div></div>
+</section>
+
 <!-- 변동 기록 -->
 <section class="panel" id="p-log" hidden>
   <div><h2>변동 기록</h2><p class="sub">적용한 메시지마다 한 건씩 남아요. 잘못 넣은 건은 되돌리면 재고도 원래대로 돌아가요.</p></div>
@@ -275,6 +288,7 @@ let warnings = [];
 let lastMsg = "";
 let editItems = null;      // working copy for 품목 관리
 let adjusting = false;
+let transfers = [];
 let editing = null;       // {id, loc} of the stock cell being edited
 let isApprover = true;    // owner/editors approve; staff only send review requests
 let pending = [];
@@ -295,13 +309,16 @@ const qty = (id, loc) => state?.stock?.[id]?.[loc] ?? 0;
 const isWholesale = it => /도매/.test(it?.cat || "");
 const cats = list => [...new Set(list.map(i => i.cat))];
 // same name appears in several sections (레몬 마들렌/스콘/휘낭시에, 딸기우유 도매/소매/팝업) → add the section
+const other = loc => loc === "bp" ? "sd" : "bp";
+const isTransit = l => l.reason === "이동" && l.delta > 0;   // the receiving side of a move waits for 받음 확인
+function inTransit(){ const m = {}; for (const t of transfers) if (t.status === "이동중" || t.status === "확인대기") for (const l of t.lines || []) { const k = l.itemId + ":" + t.to; m[k] = (m[k] || 0) + l.qty; } return m; }
 const label = (id, fallback) => { const it = itemById(id); if (!it) return fallback || id; return items().some(o => o.id !== it.id && o.name === it.name) ? `${it.name} (${it.cat})` : it.name; };
 
 // ---------- tabs ----------
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
 function showTab(t){
   document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
-  ["input","pending","stock","log","items"].forEach(k => $("#p-"+k).hidden = k !== t);
+  ["input","pending","stock","move","log","items"].forEach(k => $("#p-"+k).hidden = k !== t);
   ls.set("tab", t);
 }
 const savedTab = ls.get("tab"); if (savedTab && $("#p-"+savedTab)) showTab(savedTab);
@@ -345,7 +362,8 @@ ${catalogText()}
   · 둘 중 어느 쪽인지 말이 없으면 추측하지 말고 가까운 쪽을 넣은 뒤 warnings에 "두바이인지 확인 필요"라고 적는다.
   · "스트로베리"는 "딸기"와 같은 말이다. 딸기 두바이 = 스트로베리 두바이 = 딸기 두쫀쿠.
 - 같은 이름이 여러 분류에 있으면(레몬: 마들렌·스콘·휘낭시에) 메시지의 말(레몬마들렌, 레몬스콘)로 분류를 고른다.
-- 지점 이동("송도에서 부평으로 20 보냄") = 보낸 지점 -, 받은 지점 + (reason "이동").
+- 지점 이동("송도에서 부평으로 20 보냄", "부평 보낼 것 20") = 보낸 지점 -20, 받은 지점 +20 두 줄 (reason "이동"). 부평은 생산을 하지 않고 송도에서 받은 것만 내보낸다. 송도 11층·8층은 모두 "송도"다.
+- "부평 도착", "받음", "부평에서 세어보니" 같은 받는 쪽 확인은 재고 변동으로 넣지 말고 warnings에 "받음 확인은 ‘부평 이동’ 탭에서 해주세요"라고 적는다.
 - 괄호 속 맛 목록처럼 수량 없는 설명, 인사, 날짜, 팀 이름은 무시한다. 같은 내용을 두 번 세지 않는다.
 - 목록에 없는 품목이면 itemId는 null, name에 정식 이름을 추측해서 쓰고(예: "순수우유"), pack에 포장 종류를 쓴다.
 
@@ -475,6 +493,7 @@ const whoName = () => $("#who").value.trim() || "이름 없음";
 const tFmt = iso => new Date(iso).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
 function explain(r, d){
   const it = itemById(r.itemId); if (!it || d == null || !d) return "";
+  if (isTransit({reason: r.reason, delta: d})) return `${LOCN[other(r.loc)]} → ${LOCN[r.loc]} ‘${esc(it.name)}’ ${d}개 이동 중 · 받음 확인 후 반영`;
   return `${LOCN[r.loc]} ${esc(it.cat)} ‘${esc(it.name)}’ ${Math.abs(d)}개 ${d > 0 ? "늘어남" : "줄어듦"} · ${esc(r.reason)}`;
 }
 function openReview(rows, warns, msg, meta){
@@ -504,7 +523,8 @@ function renderPreview(){
                          : `<span class="zero">박스당 개수 미등록</span>`;
     } else {
       const k = r.itemId + ":" + r.loc; const before = k in run ? run[k] : qty(r.itemId, r.loc);
-      run[k] = before + d; after = `<span class="num">${before} → <b class="${run[k] < 0 ? "zero" : ""}">${run[k]}</b></span>`;
+      if (isTransit({reason: r.reason, delta: d})) after = `<span class="sub">이동 중으로 · 부평 받음 확인 후 반영</span>`;
+      else { run[k] = before + d; after = `<span class="num">${before} → <b class="${run[k] < 0 ? "zero" : ""}">${run[k]}</b></span>`; }
     }
     if (!d) bad = true;
     const boxNote = r.unit === "박스" ? `<div class="sub num">${r.count}박스${itemById(r.itemId)?.box ? " × " + itemById(r.itemId).box : ""}</div>` : "";
@@ -594,12 +614,13 @@ $("#btnSendReview").onclick = async () => {
 // 2) approver: summary → final approval
 $("#btnApply").onclick = () => {
   const net = new Map();
-  for (const r of preview) { const k = r.itemId + ":" + r.loc; net.set(k, (net.get(k) || 0) + effDelta(r)); }
+  const moving = [];
+  for (const r of preview) { const d = effDelta(r); if (isTransit({reason: r.reason, delta: d})) { moving.push({...r, d}); continue; } const k = r.itemId + ":" + r.loc; net.set(k, (net.get(k) || 0) + d); }
   $("#sumBody").innerHTML = [...net].map(([k, d]) => {
     const [id, loc] = k.split(":"); const now = qty(id, loc);
     return `<tr><td>${esc(label(id))}</td><td>${LOCN[loc]}</td><td class="n num">${now}</td>
       <td class="n"><span class="delta ${d>0?"p":d<0?"m":""}">${fmtD(d)}</span></td><td class="n num"><b class="${now + d < 0 ? "zero" : ""}">${now + d}</b></td></tr>`;
-  }).join("");
+  }).join("") + moving.map(m => `<tr><td>${esc(label(m.itemId))}</td><td>${LOCN[m.loc]}</td><td colspan="3" class="sub">${m.d}개 이동 중 · 받음 확인 후 반영</td></tr>`).join("");
   $("#confirmBox").hidden = false; $("#rejectBox").hidden = true; renderPreview();
   $("#confirmBox").scrollIntoView({behavior: "smooth", block: "nearest"});
 };
@@ -674,10 +695,13 @@ async function commit(lines, kind, text, opt = {}){
       const p = await db.doc("pending/" + opt.pendingId).get();
       if (!p.exists || p.data().status !== "대기") throw new Error("이미 처리된 요청이에요.");
     }
+    if (opt.precheck) await opt.precheck();
+    const transit = opt.noTransit ? [] : lines.filter(isTransit);
+    const applied = lines.filter(l => !transit.includes(l));
     const snap = await db.doc("inv/state").get();
     const s = snap.exists ? structuredClone(snap.data()) : {items: [], stock: {}};
     s.stock ||= {};
-    for (const l of lines) {
+    for (const l of applied) {
       const row = s.stock[l.itemId] ||= {bp: 0, sd: 0};
       row[l.loc] = (row[l.loc] || 0) + l.delta;
     }
@@ -689,9 +713,22 @@ async function commit(lines, kind, text, opt = {}){
     const doc = ls2.exists ? structuredClone(ls2.data()) : {day: key, entries: []};
     const entry = { id: "e" + now.getTime().toString(36) + Math.random().toString(36).slice(2,5), at: now.toISOString(),
       by: opt.by || whoName(), approvedBy: opt.approvedBy || "", kind, text: String(text||"").slice(0, 1500),
-      lines: lines.map(l => ({itemId: l.itemId, name: label(l.itemId, l.name), loc: l.loc, delta: l.delta, reason: l.reason})) };
+      lines: lines.map(l => ({itemId: l.itemId, name: label(l.itemId, l.name), loc: l.loc, delta: l.delta, reason: l.reason, ...(transit.includes(l) ? {transit: true} : {})})) };
+    if (transit.length){
+      entry.transfers = [];
+      for (const to of [...new Set(transit.map(l => l.loc))]) {
+        const tid = "t" + now.getTime().toString(36) + to + Math.random().toString(36).slice(2,4);
+        const agg = {};
+        transit.filter(l => l.loc === to).forEach(l => { agg[l.itemId] = (agg[l.itemId] || 0) + l.delta; });
+        await db.doc("transfers/" + tid).set({ at: now.toISOString(), by: opt.by || whoName(), from: other(to), to, status: "이동중", logRef: key + "|" + entry.id,
+          lines: Object.entries(agg).map(([itemId, q]) => ({itemId, name: label(itemId), qty: q})) });
+        entry.transfers.push(tid);
+      }
+    }
+    if (opt.extra) Object.assign(entry, opt.extra);
     doc.entries.push(entry);
     await ref.set(doc);
+    if (opt.after) await opt.after(entry);
     if (opt.pendingId) await db.doc("pending/" + opt.pendingId).delete();
     return entry;
   });
@@ -703,6 +740,7 @@ function renderStock(){
   if (!state){ return; }
   if (!items().length){ body.innerHTML = `<tr><td colspan="4" class="empty">등록된 품목이 없어요. ‘품목 관리’에서 품목을 추가하세요.</td></tr>`; return; }
   const q = norm($("#q").value);
+  const transitMap = inTransit();
   let h = "";
   for (const c of cats(items())) {
     const list = items().filter(i => i.cat === c && (!q || norm(i.name).includes(q) || (i.aliases||[]).some(a => norm(a).includes(q))));
@@ -710,9 +748,9 @@ function renderStock(){
     h += `<tr class="cat${/도매/.test(c) ? " w" : ""}"><td colspan="4">${esc(c)}</td></tr>`;
     for (const it of list) {
       const cells = LOCS.map(l => {
-        const v = qty(it.id, l.k);
+        const v = qty(it.id, l.k); const mv = transitMap[it.id + ":" + l.k];
         if (adjusting) return `<td class="n"><input type="number" inputmode="numeric" id="adj-${esc(it.id)}-${l.k}" data-id="${esc(it.id)}" data-loc="${l.k}" value="${v}" aria-label="${esc(it.name)} ${l.n}"></td>`;
-        return `<td class="n num ${v <= 0 ? "zero" : v < 20 ? "low" : ""}"><button class="cellbtn" data-cell="${esc(it.id)}|${l.k}" aria-label="${esc(it.name)} ${l.n} ${v}개 고치기">${v}</button></td>`;
+        return `<td class="n num ${v <= 0 ? "zero" : v < 20 ? "low" : ""}"><button class="cellbtn" data-cell="${esc(it.id)}|${l.k}" aria-label="${esc(it.name)} ${l.n} ${v}개 고치기">${v}</button>${mv ? `<span class="intransit">+${mv} 이동 중</span>` : ""}</td>`;
       }).join("");
       const tot = qty(it.id,"bp") + qty(it.id,"sd");
       h += `<tr><td>${esc(it.name)}</td>${cells}<td class="n num tot">${tot}</td></tr>`;
@@ -798,7 +836,8 @@ function renderLog(){
   if (!all.length){ $("#logList").innerHTML = `<div class="empty">아직 기록이 없어요. 메시지를 적용하면 여기에 쌓여요.</div>`; return; }
   $("#logList").innerHTML = all.map(e => {
     const t = new Date(e.at).toLocaleString("ko-KR", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"});
-    const chips = e.lines.map(l => `<span class="chip">${esc(label(l.itemId, l.name))} · ${LOCN[l.loc]} <span class="delta ${l.delta>0?"p":"m"}">${fmtD(l.delta)}</span></span>`).join("");
+    const chips = e.lines.map(l => `<span class="chip">${esc(label(l.itemId, l.name))} · ${LOCN[l.loc]} <span class="delta ${l.delta>0?"p":"m"}">${fmtD(l.delta)}</span>${l.transit ? " 이동 중" : ""}</span>`).join("")
+      + (e.loss && Object.values(e.loss).some(v => v) ? Object.entries(e.loss).filter(([,v]) => v).map(([id, v]) => `<span class="chip">${esc(label(id))} <span class="delta m">로스 ${v}</span></span>`).join("") : "");
     return `<div class="entry${e.undone ? " undone" : ""}">
       <div class="meta"><span class="num">${esc(t)}</span><span>${esc(e.by)}${e.approvedBy && e.approvedBy !== e.by ? " · 승인 " + esc(e.approvedBy) : ""}</span>
         <span class="pill ${e.kind==="되돌림"||e.undone?"neg":"acc"}">${e.undone ? "되돌림" : esc(e.kind)}</span>
@@ -816,12 +855,77 @@ $("#logList").addEventListener("click", async e => {
   try {
     const ref = db.doc("logs/" + day); const snap = await ref.get(); if (!snap.exists) return;
     const entry = snap.data().entries.find(x => x.id === id); if (!entry || entry.undone) return;
-    await commit(entry.lines.map(l => ({...l, delta: -l.delta, reason: l.reason})), "되돌림", `${new Date(entry.at).toLocaleString("ko-KR")} 기록 되돌림`, {approvedBy: whoName()});
+    const tids = entry.transfers || [];
+    await commit(entry.lines.filter(l => !l.transit).map(l => ({...l, delta: -l.delta, reason: l.reason})), "되돌림", `${new Date(entry.at).toLocaleString("ko-KR")} 기록 되돌림`, {approvedBy: whoName(), noTransit: true,
+      precheck: async () => { for (const t of tids) { const ts = await db.doc("transfers/" + t).get(); if (ts.exists && ts.data().status === "완료") throw new Error("부평에서 이미 받음 확인한 이동이라 되돌릴 수 없어요. 재고 현황에서 직접 고쳐주세요."); } },
+      after: async () => {
+        for (const t of tids) { const r = db.doc("transfers/" + t); const ts = await r.get(); if (ts.exists) await r.update({status: "취소"}); }
+        if (entry.receiptOf){ const r = db.doc("transfers/" + entry.receiptOf); const ts = await r.get();
+          if (ts.exists){ const t = structuredClone(ts.data()); t.status = "이동중"; delete t.received; delete t.loss; delete t.receivedBy; delete t.approvedBy; delete t.doneAt; await r.set(t); } }
+      }});
     const s2 = await ref.get(); const d = structuredClone(s2.data());
     const x = d.entries.find(x => x.id === id); if (x){ x.undone = true; x.undoneAt = new Date().toISOString(); }
     await ref.set(d);
     toast("되돌렸어요.");
-  } catch (err) { toast("되돌리지 못했어요. 다시 시도해주세요."); b.disabled = false; }
+  } catch (err) { toast(err?.message && !err.code ? err.message : "되돌리지 못했어요. 다시 시도해주세요."); b.disabled = false; }
+});
+
+// ---------- transfers (송도 → 부평) ----------
+function renderMoves(){
+  const open = transfers.filter(t => t.status === "이동중" || t.status === "확인대기");
+  $("#moveBadge").hidden = !open.length; $("#moveBadge").textContent = open.length;
+  // loss summary over completed transfers on screen
+  const done = transfers.filter(t => t.status === "완료");
+  const lossBy = {}; let sent = 0, lost = 0;
+  for (const t of done) for (const l of t.lines || []) { sent += l.qty; const v = (t.loss || {})[l.itemId] || 0; lost += v; if (v) lossBy[l.itemId] = (lossBy[l.itemId] || 0) + v; }
+  $("#lossRange").textContent = done.length ? `최근 ${done.length}건 기준` : "";
+  $("#lossBody").innerHTML = !done.length ? "받음 확인이 끝난 이동이 생기면 여기에 쌓여요."
+    : `<div class="row"><span>보낸 ${sent}개 중 <b class="${lost > 0 ? "zero" : ""}">${lost}개</b> 로스 (${sent ? (lost / sent * 100).toFixed(1) : 0}%)</span></div>`
+      + (Object.keys(lossBy).length ? `<div class="chips" style="margin-top:8px">${Object.entries(lossBy).sort((a,b) => b[1]-a[1]).map(([id, v]) => `<span class="chip">${esc(label(id))} <span class="delta ${v > 0 ? "m" : "p"}">${v > 0 ? "−" + v : "+" + (-v)}</span></span>`).join("")}</div>` : "");
+  if (!transfers.length){ $("#moveList").innerHTML = `<div class="empty">이동 기록이 없어요. 단톡 메시지에 “부평으로 두쫀쿠 300 보냄”처럼 적고 승인하면 여기에 생겨요.</div>`; return; }
+  const pill = {"이동중": ["warn","이동 중"], "확인대기": ["warn","받음 확인 승인 대기"], "완료": ["acc","받음 완료"], "취소": ["neg","취소"]};
+  $("#moveList").innerHTML = transfers.filter(t => t.status !== "취소").map(t => {
+    const editable = t.status === "이동중" || (t.status === "확인대기" && isApprover);
+    const rec = t.received || {};
+    const rows = (t.lines || []).map(l => {
+      const got = rec[l.itemId] ?? l.qty; const diff = (t.loss || {})[l.itemId];
+      return `<tr><td>${esc(label(l.itemId, l.name))}</td><td class="n num">${l.qty}</td>
+        <td class="n">${editable ? `<input class="recv" type="number" inputmode="numeric" id="rv-${esc(t.id)}-${esc(l.itemId)}" data-t="${esc(t.id)}" data-item="${esc(l.itemId)}" value="${got}" aria-label="${esc(label(l.itemId))} 받은 수량">` : `<span class="num">${t.status === "완료" ? got : "—"}</span>`}</td>
+        <td class="n num">${t.status === "완료" ? (diff ? `<span class="zero">−${diff}</span>` : "0") : ""}</td></tr>`;
+    }).join("");
+    const [pc, pt] = pill[t.status] || ["", t.status];
+    const btn = t.status === "이동중" ? (isApprover ? `<button class="btn primary small" data-recv="${esc(t.id)}">받음 확인</button>` : `<button class="btn primary small" data-recv="${esc(t.id)}">받음 확인 보내기</button>`)
+              : t.status === "확인대기" && isApprover ? `<button class="btn primary small" data-recv="${esc(t.id)}">승인하고 부평 재고에 넣기</button>` : "";
+    return `<div class="entry">
+      <div class="meta"><span class="num">${esc(tFmt(t.at))}</span><span>${LOCN[t.from]} → ${LOCN[t.to]} · ${esc(t.by)}</span><span class="pill ${pc}">${pt}</span>
+        ${t.receivedBy ? `<span>받음 ${esc(t.receivedBy)}</span>` : ""}<span class="grow"></span>${btn}</div>
+      <div class="scroll"><table class="sum"><thead><tr><th>품목</th><th class="n">보냄</th><th class="n">받음</th><th class="n">로스</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${t.status === "이동중" ? `<p class="sub">부평에서 박스를 열고 실제로 센 수량을 ‘받음’에 넣어주세요.</p>` : ""}</div>`;
+  }).join("");
+}
+$("#moveList").addEventListener("click", async e => {
+  const tid = e.target.dataset.recv; if (!tid) return;
+  const t = transfers.find(x => x.id === tid); if (!t) return;
+  const received = {};
+  for (const l of t.lines) { const el = document.getElementById(`rv-${tid}-${l.itemId}`); received[l.itemId] = Math.max(0, Math.trunc(Number(el?.value ?? l.qty) || 0)); }
+  const lost = t.lines.reduce((a, l) => a + l.qty - received[l.itemId], 0);
+  if (e.target.dataset.armed !== "1" && lost){ e.target.dataset.armed = "1"; e.target.textContent = `${lost}개 모자라요 · 맞으면 한 번 더`; e.target.classList.add("danger"); return; }
+  e.target.disabled = true;
+  try {
+    if (!isApprover){
+      await db.doc("transfers/" + tid).update({status: "확인대기", received, receivedBy: whoName(), receivedAt: new Date().toISOString()});
+      toast("받음 확인을 보냈어요. 관리자가 승인하면 부평 재고에 들어가요.");
+    } else {
+      const loss = {}; t.lines.forEach(l => { loss[l.itemId] = l.qty - received[l.itemId]; });
+      await commit(t.lines.filter(l => received[l.itemId]).map(l => ({itemId: l.itemId, loc: t.to, delta: received[l.itemId], reason: "이동"})), "이동 받음",
+        `${LOCN[t.from]} → ${LOCN[t.to]} ${tFmt(t.at)} 보낸 이동 받음`, {
+          by: t.receivedBy || whoName(), approvedBy: whoName(), noTransit: true, extra: {receiptOf: tid, loss},
+          precheck: async () => { const ts = await db.doc("transfers/" + tid).get(); if (!ts.exists || !["이동중","확인대기"].includes(ts.data().status)) throw new Error("이미 처리된 이동이에요."); },
+          after: async () => { await db.doc("transfers/" + tid).update({status: "완료", received, loss, receivedBy: t.receivedBy || whoName(), approvedBy: whoName(), doneAt: new Date().toISOString()}); }
+        });
+      toast(lost ? `부평 재고에 넣었어요. 이동 로스 ${lost}개를 기록했어요.` : "부평 재고에 넣었어요.");
+    }
+  } catch (err) { toast(err?.message && !err.code ? err.message : "저장하지 못했어요."); e.target.disabled = false; }
 });
 
 // ---------- items management ----------
@@ -879,7 +983,7 @@ $("#btnSaveItems").onclick = async () => {
   } catch (e) { $("#itemsStatus").textContent = "저장하지 못했어요."; b.disabled = false; }
 };
 
-function renderAll(){ if (!adjusting && !editing) renderStock(); renderLog(); renderPending(); if (!editItems || JSON.stringify(editItems) === JSON.stringify(items())) { editItems = null; } renderItems(); if (preview.length) renderPreview(); }
+function renderAll(){ renderMoves(); if (!adjusting && !editing) renderStock(); renderLog(); renderPending(); if (!editItems || JSON.stringify(editItems) === JSON.stringify(items())) { editItems = null; } renderItems(); if (preview.length) renderPreview(); }
 
 // ---------- boot ----------
 let unLog = null;
@@ -911,6 +1015,10 @@ $("#btnMore").onclick = () => { logLimit += 14; subLogs(); };
     renderAll();
   }, () => setSync("err", "연결이 끊겼어요. 새로고침해주세요."));
   subLogs();
+  db.collection("transfers").orderBy("at", "desc").limit(60).onSnapshot(sn => {
+    transfers = sn.docs.map(d => ({id: d.id, ...d.data()}));
+    renderMoves(); if (!adjusting && !editing) renderStock();
+  }, () => {});
   db.collection("pending").orderBy("at", "desc").limit(100).onSnapshot(sn => {
     pending = sn.docs.map(d => ({id: d.id, ...d.data()}));
     renderPending();
