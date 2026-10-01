@@ -155,6 +155,13 @@ tr.editor td{background:var(--accent-soft);border-bottom:1px solid var(--accent)
         <button type="button" data-loc="sd" aria-pressed="true">송도</button>
       </div>
     </div>
+    <div class="row" id="tpls" aria-label="보고 양식">
+      <span class="lbl">양식 넣기</span>
+      <button type="button" class="btn small" data-tpl="pack">11층 포장</button>
+      <button type="button" class="btn small" data-tpl="move">부평 이동</button>
+      <button type="button" class="btn small" data-tpl="f8">8층 택배</button>
+      <button type="button" class="btn small" data-tpl="bp">부평 남은 수량</button>
+    </div>
     <textarea id="msg" placeholder="예)
 9. 28 오전팀
 딸두쫀(기존꺼도매->소매)
@@ -343,6 +350,16 @@ $("#who").value = ls.get("who") || "";
 $("#who").oninput = e => ls.set("who", e.target.value.trim());
 $("#msg").value = ls.get("draft") || "";
 $("#msg").oninput = e => ls.set("draft", e.target.value);
+const TPL = {
+  pack: "[11층 포장]\n두쫀쿠 소매 72x\n딸두쫀 소매 72x\n화두쫀 도매 72x\n",
+  move: "[부평 이동]\n두쫀쿠 소매 72x\n황두쫀 소매 72x\n",
+  f8:   "[8층 택배] 품목 / 내려감 / 올라옴\n두쫀쿠 소매 / 144 / 20\n딸두쫀 소매 / 72 / 5\n",
+  bp:   "[부평 남은 수량]\n두쫀쿠 \n딸두쫀 \n"
+};
+document.querySelectorAll("#tpls [data-tpl]").forEach(b => b.onclick = () => {
+  const box = $("#msg"); box.value = (box.value.trim() ? box.value.trimEnd() + "\n\n" : "") + TPL[b.dataset.tpl];
+  ls.set("draft", box.value); box.focus(); box.setSelectionRange(box.value.length, box.value.length);
+});
 
 // ---------- parsing: AI ----------
 function catalogText(){
@@ -374,6 +391,12 @@ ${catalogText()}
   · "스트로베리"는 "딸기"와 같은 말이다. 딸기 두바이 = 스트로베리 두바이 = 딸기 두쫀쿠.
 - 재고는 포장이 끝난 수량만 센다. "바트"는 띠지·표시사항·스티커 없이 도매 포장까지 된 상태라 재고다: 화두쫀·흑두쫀·대왕두쫀 바트는 해당 두쫀쿠 x(도매) 품목, 두쫀쿠 A/S 바트는 '두쫀쿠 x (A/S 필요)'. 생산만 하고 포장 전인 것(렉, 건조 중, 생산 완료, 굽기 등)은 재고 변동으로 넣지 말고 무시한다. 나중에 포장하면 그때 포장 수량으로 + 한다.
 - 같은 이름이 여러 분류에 있으면(레몬: 마들렌·스콘·휘낭시에) 메시지의 말(레몬마들렌, 레몬스콘)로 분류를 고른다.
+- 정해진 양식 제목이 있으면 그 제목을 따른다:
+  · [11층 포장] = 송도 포장 완료, 각 줄 송도 +N (reason "포장"). "(도매->소매)"가 있으면 전환.
+  · [부평 이동] = 송도 -N, 부평 +N 두 줄 (reason "이동").
+  · [8층 택배] "품목 / 내려감 / 올라옴" = 송도 8층에서 택배로 실제 나간 수량은 내려감-올라옴이다. 송도 -(내려감-올라옴) 한 줄만 넣는다(reason "출고"). 11층↔8층 오르내림 자체는 같은 송도 안이라 따로 기록하지 않는다. 올라옴이 비어 있으면 0으로 본다.
+  · [부평 남은 수량] = 아래 남은 수량 규칙.
+- 송도 11층과 8층은 모두 "송도"다. "8층으로 내려감", "11층으로 올라옴"처럼 건물 안에서 옮긴 것만 적힌 줄은 재고 변동이 아니다(무시). 8층에서 택배로 나간 수량만 출고다.
 - 남은 수량(잔량) 보고: "남은 수량", "잔여", "남은거", "재고", "택배 다 나가고 남은 것" 처럼 지금 남아 있는 개수를 알려주는 줄은 증감(qty)이 아니라 remain에 그 숫자를 넣고 qty는 0으로 둔다. 박스로 말하면 remain은 박스 수, remainUnit "박스". 예: {"itemId":"r1","name":"두쫀쿠","loc":"부평","remain":35,"qty":0,"reason":"잔량확인","src":"두쫀쿠 35 남음"}. 부평 직원이 보내는 남은 수량 보고는 보통 부평이다. 남은 수량 메시지에 안 나온 품목은 넣지 않는다(0으로 만들지 않는다). 한 메시지에 출고 수량과 남은 수량이 같이 있으면 남은 수량만 쓰고 그 품목의 출고 줄은 넣지 않는다(중복 차감 방지).
 - 지점 이동("송도에서 부평으로 20 보냄", "부평 보낼 것 20") = 보낸 지점 -20, 받은 지점 +20 두 줄 (reason "이동"). 부평은 생산을 하지 않고 송도에서 받은 것만 내보낸다. 송도 11층·8층은 모두 "송도"다.
 - "부평 도착", "받음", "부평에서 세어보니" 같은 받는 쪽 확인은 재고 변동으로 넣지 말고 warnings에 "받음 확인은 ‘부평 이동’ 탭에서 해주세요"라고 적는다.
