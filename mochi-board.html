@@ -1,0 +1,364 @@
+<title>모찌 출고 보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600;700&family=Gowun+Batang:wght@700&display=swap">
+<style>
+/* Layout: a production whiteboard turned grid — flavors down, rounds (차수) across; the column being prepared now is the one lit up. */
+:root{
+  --bg:#F3F4EF; --surface:#FFFFFF; --sunk:#E9ECE3; --fg:#1B221D; --muted:#5E6A5B; --line:#D6DDD1;
+  --accent:#356B45; --accent-fg:#FFFFFF; --accent-soft:#DCEBD8;
+  --now:#B4561F; --now-soft:#F8E6D8;
+  --ok:#23724A; --ok-soft:#DBEFE1; --short:#A8481F; --short-soft:#F7E2D6; --over:#2D5E8A; --over-soft:#DCE8F4;
+  --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --f-brand:"Gowun Batang","Nanum Myeongjo",serif;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111512; --surface:#191F1A; --sunk:#222A23; --fg:#E7ECE3; --muted:#98A494; --line:#2D372E;
+  --accent:#86C295; --accent-fg:#0F1F14; --accent-soft:#213426;
+  --now:#F0A06A; --now-soft:#3A2618;
+  --ok:#7FD29E; --ok-soft:#1C3425; --short:#F29A72; --short-soft:#3B241A; --over:#8DB9E6; --over-soft:#1C2B3A;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111512; --surface:#191F1A; --sunk:#222A23; --fg:#E7ECE3; --muted:#98A494; --line:#2D372E;
+  --accent:#86C295; --accent-fg:#0F1F14; --accent-soft:#213426;
+  --now:#F0A06A; --now-soft:#3A2618;
+  --ok:#7FD29E; --ok-soft:#1C3425; --short:#F29A72; --short-soft:#3B241A; --over:#8DB9E6; --over-soft:#1C2B3A;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1280px;margin:0 auto;padding-inline:16px;padding-block:14px 56px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--f-brand);font-size:22px}
+.brand small{font-family:var(--f-body);font-size:13px;color:var(--muted);margin-left:8px}
+.grow{flex:1 1 auto}
+.daynav{display:flex;align-items:center;gap:6px}
+.daynav input{width:auto}
+.clock{font-family:var(--f-num);font-size:15px;color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--fg);font:600 14px var(--f-body);padding:8px 13px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.go{background:var(--now);border-color:var(--now);color:#fff;font-size:16px;padding:11px 18px}
+.btn.small{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.tile .k{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.04em}
+.tile .v{font-family:var(--f-num);font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.tile .s{font-size:12px;color:var(--muted)}
+.tile.now{border-color:var(--now);background:var(--now-soft)}
+.tile.now .v{color:var(--now)}
+.bar{height:6px;border-radius:99px;background:var(--sunk);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.tile.now .bar i{background:var(--now)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.04em;vertical-align:bottom}
+th .t{display:block;font-weight:400;font-size:11px}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1}
+td.name{font-weight:700;font-size:16px}
+td.name small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.num{font-family:var(--f-num)}
+td.total{font-family:var(--f-num);font-weight:700;font-size:17px}
+td.cell{font-family:var(--f-num);min-width:92px}
+.big{font-size:20px;font-weight:700}
+.sub{display:block;font-size:11px;color:var(--muted);font-family:var(--f-body)}
+th.now{color:var(--now)}
+td.now,th.now{background:var(--now-soft)}
+td.done .big{color:var(--muted)}
+td.short .big{color:var(--short)}
+td.over .big{color:var(--over)}
+.carry{font-size:11px;color:var(--short);font-family:var(--f-body)}
+.carry.neg{color:var(--over)}
+td.future .big{color:var(--muted);font-weight:500}
+td.rem{font-family:var(--f-num);font-weight:700;font-size:17px}
+tr.fin td{opacity:.55}
+tr.fin td.name{text-decoration:line-through}
+.ready{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:4px}
+.ready input{width:70px;text-align:right;font-family:var(--f-num);padding:4px 6px}
+.ready .pct{font-size:11px;font-family:var(--f-body);min-width:34px;text-align:right}
+.ready .pct.full{color:var(--ok)} .ready .pct.part{color:var(--now)}
+tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
+.actionbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 14px;border-top:1px solid var(--line)}
+.note{font-size:13px;color:var(--muted)}
+.confirm{border:1px solid var(--now);background:var(--now-soft);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.confirm ul{margin:0;padding-left:18px}
+.setup{padding:14px;display:flex;flex-direction:column;gap:12px}
+.setup .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.setup label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.setup textarea{min-height:200px;width:100%;line-height:1.6;font-family:var(--f-num)}
+.empty{padding:32px 16px;text-align:center;color:var(--muted)}
+.board-only{display:none} body.board .board-only{display:block}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+/* board mode: read from across the room */
+body.board .edit-only{display:none!important}
+body.board{font-size:18px}
+body.board .wrap{max-width:none}
+body.board .tile .v{font-size:40px}
+body.board td.name{font-size:24px}
+body.board .big{font-size:30px}
+body.board td.total,body.board td.rem{font-size:26px}
+body.board th{font-size:16px}
+body.board td{padding:12px 14px}
+@media (max-width:720px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tile .v{font-size:22px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="brand">모찌 출고 보드<small>송도 생산 → 택배 차수 배분</small></div>
+    <div class="grow"></div>
+    <div class="daynav edit-only">
+      <button class="btn small" id="prevDay" aria-label="전날">‹</button>
+      <input type="date" id="day" aria-label="날짜">
+      <button class="btn small" id="nextDay" aria-label="다음날">›</button>
+    </div>
+    <span class="clock" id="clock"></span>
+    <button class="btn edit-only" id="btnSetup">품목·수량 설정</button>
+    <button class="btn" id="btnBoard">보드 화면</button>
+  </header>
+
+  <section class="tiles" aria-label="오늘 요약">
+    <div class="tile"><span class="k">오늘 총 목표</span><span class="v" id="tTotal">–</span><span class="s" id="tTotalS">&nbsp;</span></div>
+    <div class="tile"><span class="k">출발 완료</span><span class="v" id="tSent">–</span><div class="bar"><i id="tSentBar" style="width:0"></i></div></div>
+    <div class="tile"><span class="k">남은 수량</span><span class="v" id="tLeft">–</span><span class="s" id="tLeftS">&nbsp;</span></div>
+    <div class="tile now"><span class="k" id="tNowK">지금 준비 중</span><span class="v" id="tNow">–</span><div class="bar"><i id="tNowBar" style="width:0"></i></div></div>
+  </section>
+
+  <section class="card setup edit-only" id="setup" hidden>
+    <div class="row">
+      <label>차수<select id="sRounds"><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
+      <label>1차 크기 (다른 차수 대비 %)<input id="sFirst" type="number" inputmode="numeric" value="70" min="10" max="200" style="width:110px"></label>
+      <span class="grow"></span>
+      <button class="btn" id="btnCopyPrev">최근 날짜 품목 불러오기</button>
+    </div>
+    <label>맛과 오늘 총수량 (한 줄에 하나: 이름 수량)
+      <textarea id="sList" spellcheck="false" placeholder="샤인머스캣 385&#10;키위 292&#10;바나나 239"></textarea>
+    </label>
+    <div class="row"><button class="btn primary" id="btnSave">저장</button><button class="btn" id="btnSetupClose">닫기</button>
+      <span class="note">이미 출발한 차수 기록은 그대로 두고, 남은 차수 목표만 다시 계산해요.</span></div>
+  </section>
+
+  <section class="card">
+    <div class="scroll"><table id="grid" aria-label="맛별 차수 목표"><thead id="gHead"></thead><tbody id="gBody"><tr><td colspan="9" class="empty">불러오는 중이에요.</td></tr></tbody><tfoot id="gFoot"></tfoot></table></div>
+    <div class="actionbar edit-only" id="actions"></div>
+  </section>
+  <div class="confirm edit-only" id="confirm" hidden></div>
+  <p class="note edit-only">현재 차수 칸에 준비된 수량을 넣어두면 퍼센트가 보여요. 다 안 됐어도 <b>출발</b>을 누르면 준비된 만큼만 출발로 기록되고, 모자란 수량은 다음 차수 목표에 자동으로 더해져요. 마지막 차수는 항상 총수량에 맞춰져요.</p>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const z = n => String(n).padStart(2, "0");
+const keyOf = d => `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
+const shift = (k, n) => { const d = new Date(k + "T12:00:00"); d.setDate(d.getDate() + n); return keyOf(d); };
+const hm = iso => { const d = new Date(iso); return `${z(d.getHours())}:${z(d.getMinutes())}`; };
+let toastT; const toast = t => { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2600); };
+
+let db = null, day = keyOf(new Date()), doc = null, unsub = null, confirming = false;
+const ls = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
+
+// ---------- planning math ----------
+// base split: 1차 is `firstPct`% of a normal round, the rest equal; the last round takes the rounding remainder
+function baseSplit(total, n, firstPct){
+  const w = Array.from({length: n}, (_, i) => i === 0 ? firstPct / 100 : 1);
+  const sum = w.reduce((a, b) => a + b, 0); const out = []; let acc = 0;
+  for (let i = 0; i < n; i++) { if (i === n - 1) out.push(total - acc); else { const v = Math.round(total * w[i] / sum); out.push(v); acc += v; } }
+  return out;
+}
+// per round: target = base + what the previous round fell short of (carry); the last round closes the day exactly
+function planFor(f){
+  const n = doc.rounds, b = baseSplit(f.total, n, doc.firstPct), ov = doc.override?.[f.id] || {};
+  const rows = []; let before = 0, carry = 0;
+  for (let k = 0; k < n; k++) {
+    const departed = !!doc.departed?.[k];
+    const raw = k === n - 1 ? f.total - before : (ov[k] ?? b[k]) + carry;
+    const target = Math.max(0, raw);
+    const sent = departed ? Number(doc.sent?.[f.id]?.[k] ?? 0) : null;
+    rows.push({target, sent, departed, carryIn: k === n - 1 ? 0 : carry});
+    if (departed) { before += sent; carry = raw - sent; } else { before += target; carry = 0; }
+  }
+  return rows;
+}
+const currentRound = () => { for (let k = 0; k < doc.rounds; k++) if (!doc.departed?.[k]) return k; return doc.rounds; };
+const readyOf = (fid, k) => doc.ready?.[fid]?.[k];
+
+// ---------- render ----------
+function render(){
+  if (!doc){ renderEmpty(); return; }
+  const n = doc.rounds, cur = currentRound(), fl = doc.flavors || [];
+  const plans = Object.fromEntries(fl.map(f => [f.id, planFor(f)]));
+  // header
+  let h = `<tr><th>맛</th><th>총</th>`;
+  for (let k = 0; k < n; k++) h += `<th class="${k === cur ? "now" : ""}">${k+1}차${doc.departed?.[k] ? `<span class="t">${hm(doc.departed[k])} 출발</span>` : k === cur ? `<span class="t">준비 중</span>` : `<span class="t">예정</span>`}</th>`;
+  $("#gHead").innerHTML = h + `<th>남음</th></tr>`;
+  // body
+  if (!fl.length){ $("#gBody").innerHTML = `<tr><td colspan="${n+3}" class="empty">‘품목·수량 설정’에서 오늘 만들 맛과 총수량을 넣어주세요.</td></tr>`; $("#gFoot").innerHTML = ""; }
+  else $("#gBody").innerHTML = fl.map(f => {
+    const p = plans[f.id]; const sentSum = p.reduce((a, r) => a + (r.sent ?? 0), 0); const left = f.total - sentSum;
+    let cells = "";
+    p.forEach((r, k) => {
+      const carry = r.carryIn ? `<span class="carry ${r.carryIn < 0 ? "neg" : ""}">${r.carryIn > 0 ? "+" + r.carryIn + " 이월" : r.carryIn + " 초과분"}</span>` : "";
+      if (r.departed) {
+        const cls = r.sent < r.target ? "short" : r.sent > r.target ? "over" : "done";
+        cells += `<td class="cell ${cls}"><span class="big">${r.sent}</span><span class="sub">목표 ${r.target}${r.sent !== r.target ? ` · ${r.sent < r.target ? "−" + (r.target - r.sent) : "+" + (r.sent - r.target)}` : ""}</span></td>`;
+      } else if (k === cur) {
+        const rd = readyOf(f.id, k); const pct = r.target ? Math.min(100, Math.round((rd ?? 0) / r.target * 100)) : 100;
+        cells += `<td class="cell now"><span class="big">${r.target}</span>${carry}
+          <div class="ready edit-only"><input type="number" inputmode="numeric" min="0" id="rd-${esc(f.id)}" data-fid="${esc(f.id)}" value="${rd ?? ""}" placeholder="준비" aria-label="${esc(f.name)} ${k+1}차 준비 수량">
+          <span class="pct ${rd == null ? "" : pct >= 100 ? "full" : "part"}">${rd == null ? "" : pct + "%"}</span></div>
+          ${rd != null ? `<span class="sub board-only">준비 ${rd}</span>` : ""}</td>`;
+      } else cells += `<td class="cell future"><span class="big">${r.target}</span>${carry}</td>`;
+    });
+    return `<tr class="${left <= 0 ? "fin" : ""}"><td class="name">${esc(f.name)}</td><td class="total">${f.total}</td>${cells}<td class="rem">${left}</td></tr>`;
+  }).join("");
+  // footer totals per round
+  if (fl.length){
+    let ft = `<tr><td>합계</td><td class="num">${fl.reduce((a, f) => a + f.total, 0)}</td>`;
+    for (let k = 0; k < n; k++) { const t = fl.reduce((a, f) => a + plans[f.id][k].target, 0); const s = fl.reduce((a, f) => a + (plans[f.id][k].sent ?? 0), 0);
+      ft += `<td class="num ${k === cur ? "now" : ""}">${doc.departed?.[k] ? s + `<span class="sub">목표 ${t}</span>` : t}</td>`; }
+    const sentAll = fl.reduce((a, f) => a + plans[f.id].reduce((x, r) => x + (r.sent ?? 0), 0), 0);
+    $("#gFoot").innerHTML = ft + `<td class="num">${fl.reduce((a, f) => a + f.total, 0) - sentAll}</td></tr>`;
+  }
+  // tiles
+  const total = fl.reduce((a, f) => a + f.total, 0);
+  const sent = fl.reduce((a, f) => a + plans[f.id].reduce((x, r) => x + (r.sent ?? 0), 0), 0);
+  $("#tTotal").textContent = total.toLocaleString(); $("#tTotalS").textContent = `${fl.length}가지 맛 · ${n}차`;
+  $("#tSent").textContent = sent.toLocaleString(); $("#tSentBar").style.width = (total ? sent / total * 100 : 0) + "%";
+  $("#tLeft").textContent = (total - sent).toLocaleString();
+  $("#tLeftS").textContent = cur < n ? `${n - cur}개 차수 남음` : "오늘 출고 끝";
+  if (cur < n){
+    const need = fl.reduce((a, f) => a + plans[f.id][cur].target, 0);
+    const ready = fl.reduce((a, f) => a + Math.min(readyOf(f.id, cur) ?? 0, plans[f.id][cur].target), 0);
+    $("#tNowK").textContent = `${cur+1}차 준비`; $("#tNow").textContent = need ? Math.round(ready / need * 100) + "%" : "–";
+    $("#tNowBar").style.width = (need ? ready / need * 100 : 0) + "%";
+  } else { $("#tNowK").textContent = "지금 준비 중"; $("#tNow").textContent = "완료"; $("#tNowBar").style.width = "100%"; }
+  // actions
+  const last = (() => { for (let k = n - 1; k >= 0; k--) if (doc.departed?.[k]) return k; return -1; })();
+  $("#actions").innerHTML = (cur < n ? `<button class="btn go" id="btnGo">${cur+1}차 출발</button>` : `<span class="note">오늘 차수를 모두 출발했어요.</span>`)
+    + `<button class="btn small" id="btnFill"${cur < n ? "" : " disabled"}>준비 칸을 목표로 채우기</button>`
+    + (last >= 0 ? `<span class="grow"></span><button class="btn small" id="btnUndo">${last+1}차 출발 취소</button>` : "");
+}
+function renderEmpty(){
+  $("#gHead").innerHTML = ""; $("#gFoot").innerHTML = ""; $("#actions").innerHTML = "";
+  $("#gBody").innerHTML = `<tr><td class="empty">${esc(day)} 계획이 아직 없어요. ‘품목·수량 설정’에서 맛과 총수량을 넣거나, 최근 날짜 품목을 불러오세요.</td></tr>`;
+  ["#tTotal","#tSent","#tLeft","#tNow"].forEach(s => $(s).textContent = "–");
+  $("#tTotalS").textContent = ""; $("#tLeftS").textContent = ""; $("#tSentBar").style.width = "0"; $("#tNowBar").style.width = "0";
+}
+
+// ---------- interactions ----------
+$("#gBody").addEventListener("change", async e => {
+  const fid = e.target.dataset.fid; if (!fid || !db || !doc) return;
+  const k = currentRound(); const v = e.target.value === "" ? null : Math.max(0, Math.trunc(Number(e.target.value) || 0));
+  try { await ref().update({ready: {[fid]: {[k]: v}}}); } catch { toast("저장하지 못했어요. 다시 넣어주세요."); }
+});
+$("#actions").addEventListener("click", async e => {
+  if (!doc) return; const k = currentRound();
+  if (e.target.id === "btnFill") {
+    const patch = {}; doc.flavors.forEach(f => { patch[f.id] = {[k]: planFor(f)[k].target}; });
+    try { await ref().update({ready: patch}); } catch { toast("저장하지 못했어요."); }
+  }
+  if (e.target.id === "btnGo") showConfirm(k);
+  if (e.target.id === "btnUndo") {
+    if (e.target.dataset.armed !== "1"){ e.target.dataset.armed = "1"; e.target.textContent = "정말 취소?"; return; }
+    let last = -1; for (let i = doc.rounds - 1; i >= 0; i--) if (doc.departed?.[i]) { last = i; break; }
+    if (last < 0) return;
+    const d = structuredClone(doc); delete d.departed[last]; Object.values(d.sent || {}).forEach(m => delete m[last]);
+    try { await ref().set(d); toast(`${last+1}차 출발을 취소했어요.`); } catch { toast("취소하지 못했어요."); }
+  }
+});
+function showConfirm(k){
+  const rows = doc.flavors.map(f => { const t = planFor(f)[k].target; const rd = readyOf(f.id, k); return {f, t, s: rd ?? t, set: rd != null}; });
+  const short = rows.filter(r => r.s < r.t), over = rows.filter(r => r.s > r.t), unset = rows.filter(r => !r.set);
+  const isLast = k === doc.rounds - 1;
+  const box = $("#confirm"); box.hidden = false; confirming = true;
+  box.innerHTML = `<b>${k+1}차 출발 — 총 ${rows.reduce((a, r) => a + r.s, 0)}개</b>
+    ${short.length ? `<div>모자란 맛 (${isLast ? "마지막 차수라 남은 수량으로 남아요" : "다음 차수로 이월"}):<ul>${short.map(r => `<li>${esc(r.f.name)} ${r.s} / ${r.t} → <b>${r.t - r.s}개 ${isLast ? "미출고" : "이월"}</b></li>`).join("")}</ul></div>` : ""}
+    ${over.length ? `<div>목표보다 많이 보낸 맛 (다음 차수에서 줄어요):<ul>${over.map(r => `<li>${esc(r.f.name)} ${r.s} / ${r.t}</li>`).join("")}</ul></div>` : ""}
+    ${unset.length ? `<div class="note">준비 수량을 안 넣은 맛 ${unset.length}개는 목표대로 출발한 걸로 기록해요: ${unset.map(r => esc(r.f.name)).join(", ")}</div>` : ""}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn go" id="btnGoOk">출발 확정</button><button class="btn" id="btnGoBack">돌아가기</button></div>`;
+  box.scrollIntoView({behavior: "smooth", block: "nearest"});
+  $("#btnGoBack").onclick = () => { box.hidden = true; confirming = false; };
+  $("#btnGoOk").onclick = async () => {
+    $("#btnGoOk").disabled = true;
+    const sent = {}; rows.forEach(r => { sent[r.f.id] = {[k]: r.s}; });
+    try {
+      const snap = await ref().get();
+      if (snap.exists && snap.data().departed?.[k]) { toast(`${k+1}차는 이미 출발 처리됐어요.`); }
+      else { await ref().update({sent, departed: {[k]: new Date().toISOString()}}); toast(`${k+1}차 출발을 기록했어요.`); }
+      box.hidden = true; confirming = false;
+    } catch { toast("기록하지 못했어요. 다시 눌러주세요."); $("#btnGoOk").disabled = false; }
+  };
+}
+
+// setup
+function openSetup(){
+  $("#setup").hidden = false;
+  $("#sRounds").value = String(doc?.rounds ?? 4); $("#sFirst").value = String(doc?.firstPct ?? 70);
+  $("#sList").value = (doc?.flavors || []).map(f => `${f.name} ${f.total}`).join("\n");
+}
+$("#btnSetup").onclick = () => $("#setup").hidden ? openSetup() : ($("#setup").hidden = true);
+$("#btnSetupClose").onclick = () => $("#setup").hidden = true;
+function parseList(text){
+  const out = [];
+  for (const raw of text.split(/\n/)) { const line = raw.trim(); if (!line) continue;
+    const m = line.match(/^(.*?)[\s:：,]*(\d+)\s*개?$/); if (!m || !m[1].trim()) continue;
+    out.push({name: m[1].trim(), total: parseInt(m[2], 10)}); }
+  return out;
+}
+$("#btnSave").onclick = async () => {
+  const list = parseList($("#sList").value);
+  if (!list.length) return toast("‘이름 수량’ 형식으로 한 줄씩 넣어주세요.");
+  const rounds = Math.min(6, Math.max(2, parseInt($("#sRounds").value, 10) || 4));
+  const firstPct = Math.min(200, Math.max(10, parseInt($("#sFirst").value, 10) || 70));
+  const departedN = doc ? Object.keys(doc.departed || {}).length : 0;
+  if (rounds < departedN) return toast(`이미 ${departedN}차까지 출발해서 차수를 그보다 줄일 수 없어요.`);
+  const old = doc?.flavors || [];
+  const flavors = list.map((f, i) => ({ id: old.find(o => o.name === f.name)?.id || "f" + Date.now().toString(36) + i, name: f.name, total: f.total }));
+  try {
+    if (doc) await ref().update({flavors, rounds, firstPct});
+    else await ref().set({date: day, flavors, rounds, firstPct, departed: {}, sent: {}, ready: {}, createdAt: new Date().toISOString()});
+    $("#setup").hidden = true; toast("저장했어요.");
+  } catch { toast("저장하지 못했어요."); }
+};
+$("#btnCopyPrev").onclick = async () => {
+  if (!db) return;
+  for (let i = 1; i <= 14; i++) { const s = await db.doc("boards/" + shift(day, -i)).get().catch(() => null);
+    if (s?.exists && s.data().flavors?.length) { const d = s.data();
+      $("#sList").value = d.flavors.map(f => `${f.name} ${f.total}`).join("\n"); $("#sRounds").value = String(d.rounds); $("#sFirst").value = String(d.firstPct);
+      toast(`${shift(day, -i)} 품목을 불러왔어요. 수량을 고치고 저장하세요.`); return; } }
+  toast("최근 2주 안에 저장된 계획이 없어요.");
+};
+
+// day navigation + board mode
+const ref = () => db.doc("boards/" + day);
+function subscribe(){
+  unsub?.(); doc = null; render(); $("#day").value = day;
+  if (!db) return;
+  unsub = ref().onSnapshot(s => { doc = s.exists ? s.data() : null; if (!confirming) $("#confirm").hidden = true; render(); },
+    () => { $("#gBody").innerHTML = `<tr><td class="empty">연결이 끊겼어요. 새로고침해주세요.</td></tr>`; });
+}
+$("#day").onchange = e => { if (e.target.value) { day = e.target.value; subscribe(); } };
+$("#prevDay").onclick = () => { day = shift(day, -1); subscribe(); };
+$("#nextDay").onclick = () => { day = shift(day, 1); subscribe(); };
+function setBoard(on){ document.body.classList.toggle("board", on); $("#btnBoard").textContent = on ? "편집 화면" : "보드 화면"; ls.set("board", on ? "1" : "0"); }
+$("#btnBoard").onclick = () => setBoard(!document.body.classList.contains("board"));
+setBoard(location.hash === "#board" || ls.get("board") === "1");
+const tick = () => { const d = new Date(); $("#clock").textContent = `${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`; };
+tick(); setInterval(tick, 20000);
+
+$("#day").value = day; render();
+(async () => {
+  db = await claude.use("db");
+  if (!db){ $("#gBody").innerHTML = `<tr><td class="empty">이 화면에서는 보드에 연결할 수 없어요. claude.ai에서 열어주세요.</td></tr>`; return; }
+  subscribe();
+})();
+})();
+</script>
