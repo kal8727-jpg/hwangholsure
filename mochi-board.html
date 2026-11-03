@@ -78,6 +78,8 @@ td.future .big{color:var(--muted);font-weight:500}
 td.rem{font-family:var(--f-num);font-weight:700;font-size:17px}
 tr.fin td{opacity:.55}
 tr.fin td.name{text-decoration:line-through}
+.ready .done-btn{padding:4px 9px;font-size:13px}
+.undo{border:0;background:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 0 0 4px;text-decoration:underline}
 .ready{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:4px}
 .ready input{width:70px;text-align:right;font-family:var(--f-num);padding:4px 6px}
 .ready .pct{font-size:11px;font-family:var(--f-body);min-width:34px;text-align:right}
@@ -147,8 +149,7 @@ body.board td{padding:12px 14px}
     <div class="scroll"><table id="grid" aria-label="맛별 차수 목표"><thead id="gHead"></thead><tbody id="gBody"><tr><td colspan="9" class="empty">불러오는 중이에요.</td></tr></tbody><tfoot id="gFoot"></tfoot></table></div>
     <div class="actionbar edit-only" id="actions"></div>
   </section>
-  <div class="confirm edit-only" id="confirm" hidden></div>
-  <p class="note edit-only">현재 차수 칸에 준비된 수량을 넣어두면 퍼센트가 보여요. 다 안 됐어도 <b>출발</b>을 누르면 준비된 만큼만 출발로 기록되고, 모자란 수량은 다음 차수 목표에 자동으로 더해져요. 마지막 차수는 항상 총수량에 맞춰져요.</p>
+  <p class="note edit-only">맛마다 지금 차수 칸에 실제로 보낸 수량을 넣고 <b>완료</b>를 누르세요(비워두면 목표대로). 그 맛의 다음 차수 목표가 바로 다시 계산돼요. 덜 보내면 다음 차수에 더해지고, 더 보내면 빠져요. 마지막 차수는 항상 총수량에 맞춰져요.</p>
 </div>
 <div class="toast" id="toast" hidden></div>
 
@@ -163,6 +164,7 @@ const hm = iso => { const d = new Date(iso); return `${z(d.getHours())}:${z(d.ge
 let toastT; const toast = t => { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2600); };
 
 let db = null, day = keyOf(new Date()), doc = null, unsub = null, confirming = false;
+const busy = new Set();
 const ls = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
 
 // ---------- planning math ----------
@@ -173,62 +175,61 @@ function baseSplit(total, n, firstPct){
   for (let i = 0; i < n; i++) { if (i === n - 1) out.push(total - acc); else { const v = Math.round(total * w[i] / sum); out.push(v); acc += v; } }
   return out;
 }
-// per round: target = base + what the previous round fell short of (carry); the last round closes the day exactly
+// each flavor is finished round by round on its own (done[fid][k]); its later rounds follow immediately
+const isDone = (fid, k) => !!(doc.done?.[fid]?.[k] || doc.departed?.[k]);
 function planFor(f){
   const n = doc.rounds, b = baseSplit(f.total, n, doc.firstPct), ov = doc.override?.[f.id] || {};
   const rows = []; let before = 0, carry = 0;
   for (let k = 0; k < n; k++) {
-    const departed = !!doc.departed?.[k];
+    const departed = isDone(f.id, k);
     const raw = k === n - 1 ? f.total - before : (ov[k] ?? b[k]) + carry;
     const target = Math.max(0, raw);
     const sent = departed ? Number(doc.sent?.[f.id]?.[k] ?? 0) : null;
-    rows.push({target, sent, departed, carryIn: k === n - 1 ? 0 : carry});
+    rows.push({target, sent, departed, carryIn: k === n - 1 ? 0 : carry, at: doc.done?.[f.id]?.[k] || doc.departed?.[k] || null});
     // carry moves both ways: short → next round +, over → next round − (and any over that a 0-target round can't absorb keeps going)
     if (departed) { before += sent; carry = raw - sent; } else { before += target; carry = raw - target; }
   }
   return rows;
 }
-const currentRound = () => { for (let k = 0; k < doc.rounds; k++) if (!doc.departed?.[k]) return k; return doc.rounds; };
-const readyOf = (fid, k) => doc.ready?.[fid]?.[k];
+const flavorRound = f => { for (let k = 0; k < doc.rounds; k++) if (!isDone(f.id, k)) return k; return doc.rounds; };
+// the round the floor is working on: the earliest round some flavor still has open
+const floorRound = () => Math.min(doc.rounds, ...(doc.flavors || []).map(flavorRound));
 
 // ---------- render ----------
 function render(){
   if (!doc){ renderEmpty(); return; }
-  const n = doc.rounds, cur = currentRound(), fl = doc.flavors || [];
+  const n = doc.rounds, fl = doc.flavors || [], cur = fl.length ? floorRound() : 0;
   const plans = Object.fromEntries(fl.map(f => [f.id, planFor(f)]));
-  // header
+  const doneCount = k => fl.filter(f => isDone(f.id, k)).length;
   let h = `<tr><th>맛</th><th>총</th>`;
-  for (let k = 0; k < n; k++) h += `<th class="${k === cur ? "now" : ""}">${k+1}차${doc.departed?.[k] ? `<span class="t">${hm(doc.departed[k])} 출발</span>` : k === cur ? `<span class="t">준비 중</span>` : `<span class="t">예정</span>`}</th>`;
+  for (let k = 0; k < n; k++) { const c = doneCount(k);
+    h += `<th class="${k === cur ? "now" : ""}">${k+1}차<span class="t">${c === fl.length && fl.length ? "완료" : c ? `${c}/${fl.length} 맛 완료` : k === cur ? "준비 중" : "예정"}</span></th>`; }
   $("#gHead").innerHTML = h + `<th>남음</th></tr>`;
-  // body
   if (!fl.length){ $("#gBody").innerHTML = `<tr><td colspan="${n+3}" class="empty">‘품목·수량 설정’에서 오늘 만들 맛과 총수량을 넣어주세요.</td></tr>`; $("#gFoot").innerHTML = ""; }
   else $("#gBody").innerHTML = fl.map(f => {
-    const p = plans[f.id]; const sentSum = p.reduce((a, r) => a + (r.sent ?? 0), 0); const left = f.total - sentSum;
+    const p = plans[f.id], fr = flavorRound(f); const sentSum = p.reduce((a, r) => a + (r.sent ?? 0), 0); const left = f.total - sentSum;
+    let lastDone = -1; p.forEach((r, k) => { if (doc.done?.[f.id]?.[k]) lastDone = k; });
     let cells = "";
     p.forEach((r, k) => {
       const carry = r.carryIn ? `<span class="carry ${r.carryIn < 0 ? "neg" : ""}">${r.carryIn > 0 ? "+" + r.carryIn + " 이월" : r.carryIn + " 초과분"}</span>` : "";
       if (r.departed) {
         const cls = r.sent < r.target ? "short" : r.sent > r.target ? "over" : "done";
-        cells += `<td class="cell ${cls}"><span class="big">${r.sent}</span><span class="sub">목표 ${r.target}${r.sent !== r.target ? ` · ${r.sent < r.target ? "−" + (r.target - r.sent) : "+" + (r.sent - r.target)}` : ""}</span></td>`;
-      } else if (k === cur) {
-        const rd = readyOf(f.id, k); const pct = r.target ? Math.min(100, Math.round((rd ?? 0) / r.target * 100)) : 100;
+        cells += `<td class="cell ${cls}"><span class="big">${r.sent}</span><span class="sub">목표 ${r.target}${r.sent !== r.target ? ` · ${r.sent < r.target ? "−" + (r.target - r.sent) : "+" + (r.sent - r.target)}` : ""}${r.at ? " · " + hm(r.at) : ""}${k === lastDone ? `<button class="undo edit-only" data-undo="${esc(f.id)}|${k}">취소</button>` : ""}</span></td>`;
+      } else if (k === fr) {
         cells += `<td class="cell now"><span class="big">${r.target}</span>${carry}
-          <div class="ready edit-only"><input type="number" inputmode="numeric" min="0" id="rd-${esc(f.id)}" data-fid="${esc(f.id)}" value="${rd ?? ""}" placeholder="준비" aria-label="${esc(f.name)} ${k+1}차 준비 수량">
-          <span class="pct ${rd == null ? "" : pct >= 100 ? "full" : "part"}">${rd == null ? "" : pct + "%"}</span></div>
-          ${rd != null ? `<span class="sub board-only">준비 ${rd}</span>` : ""}</td>`;
+          <div class="ready edit-only"><input type="number" inputmode="numeric" min="0" id="rd-${esc(f.id)}" value="${doc.ready?.[f.id]?.[k] ?? ""}" placeholder="${r.target}" aria-label="${esc(f.name)} ${k+1}차 보낸 수량">
+          <button class="btn primary done-btn" data-done="${esc(f.id)}"${busy.has(f.id) ? " disabled" : ""}>완료</button></div></td>`;
       } else cells += `<td class="cell future"><span class="big">${r.target}</span>${carry}</td>`;
     });
-    return `<tr class="${left <= 0 ? "fin" : ""}"><td class="name">${esc(f.name)}</td><td class="total">${f.total}</td>${cells}<td class="rem">${left}</td></tr>`;
+    return `<tr class="${left <= 0 && fr >= n ? "fin" : ""}"><td class="name">${esc(f.name)}</td><td class="total">${f.total}</td>${cells}<td class="rem">${left}</td></tr>`;
   }).join("");
-  // footer totals per round
   if (fl.length){
     let ft = `<tr><td>합계</td><td class="num">${fl.reduce((a, f) => a + f.total, 0)}</td>`;
     for (let k = 0; k < n; k++) { const t = fl.reduce((a, f) => a + plans[f.id][k].target, 0); const s = fl.reduce((a, f) => a + (plans[f.id][k].sent ?? 0), 0);
-      ft += `<td class="num ${k === cur ? "now" : ""}">${doc.departed?.[k] ? s + `<span class="sub">목표 ${t}</span>` : t}</td>`; }
+      ft += `<td class="num ${k === cur ? "now" : ""}">${doneCount(k) ? `${s}<span class="sub">목표 ${t}</span>` : t}</td>`; }
     const sentAll = fl.reduce((a, f) => a + plans[f.id].reduce((x, r) => x + (r.sent ?? 0), 0), 0);
     $("#gFoot").innerHTML = ft + `<td class="num">${fl.reduce((a, f) => a + f.total, 0) - sentAll}</td></tr>`;
   }
-  // tiles
   const total = fl.reduce((a, f) => a + f.total, 0);
   const sent = fl.reduce((a, f) => a + plans[f.id].reduce((x, r) => x + (r.sent ?? 0), 0), 0);
   $("#tTotal").textContent = total.toLocaleString(); $("#tTotalS").textContent = `${fl.length}가지 맛 · ${n}차`;
@@ -236,16 +237,11 @@ function render(){
   $("#tLeft").textContent = (total - sent).toLocaleString();
   $("#tLeftS").textContent = cur < n ? `${n - cur}개 차수 남음` : "오늘 출고 끝";
   if (cur < n){
-    const need = fl.reduce((a, f) => a + plans[f.id][cur].target, 0);
-    const ready = fl.reduce((a, f) => a + Math.min(readyOf(f.id, cur) ?? 0, plans[f.id][cur].target), 0);
-    $("#tNowK").textContent = `${cur+1}차 준비`; $("#tNow").textContent = need ? Math.round(ready / need * 100) + "%" : "–";
-    $("#tNowBar").style.width = (need ? ready / need * 100 : 0) + "%";
-  } else { $("#tNowK").textContent = "지금 준비 중"; $("#tNow").textContent = "완료"; $("#tNowBar").style.width = "100%"; }
-  // actions
-  const last = (() => { for (let k = n - 1; k >= 0; k--) if (doc.departed?.[k]) return k; return -1; })();
-  $("#actions").innerHTML = (cur < n ? `<button class="btn go" id="btnGo">${cur+1}차 출발</button>` : `<span class="note">오늘 차수를 모두 출발했어요.</span>`)
-    + `<button class="btn small" id="btnFill"${cur < n ? "" : " disabled"}>준비 칸을 목표로 채우기</button>`
-    + (last >= 0 ? `<span class="grow"></span><button class="btn small" id="btnUndo">${last+1}차 출발 취소</button>` : "");
+    const c = doneCount(cur);
+    $("#tNowK").textContent = `${cur+1}차 진행`; $("#tNow").textContent = `${c}/${fl.length}`;
+    $("#tNowBar").style.width = (fl.length ? c / fl.length * 100 : 0) + "%";
+  } else { $("#tNowK").textContent = "진행"; $("#tNow").textContent = "완료"; $("#tNowBar").style.width = "100%"; }
+  $("#actions").innerHTML = cur < n ? `<button class="btn small" id="btnAll">${cur+1}차 남은 맛 모두 목표대로 완료</button>` : `<span class="note">오늘 모든 맛, 모든 차수를 마쳤어요.</span>`;
 }
 function renderEmpty(){
   $("#gHead").innerHTML = ""; $("#gFoot").innerHTML = ""; $("#actions").innerHTML = "";
@@ -254,52 +250,46 @@ function renderEmpty(){
   $("#tTotalS").textContent = ""; $("#tLeftS").textContent = ""; $("#tSentBar").style.width = "0"; $("#tNowBar").style.width = "0";
 }
 
-// ---------- interactions ----------
+// ---------- per-flavor completion ----------
+async function finish(fid){
+  const f = doc.flavors.find(x => x.id === fid); if (!f || busy.has(fid)) return;
+  const k = flavorRound(f); if (k >= doc.rounds) return;
+  const t = planFor(f)[k].target; const el = document.getElementById("rd-" + fid);
+  const v = el && el.value !== "" ? Math.max(0, Math.trunc(Number(el.value) || 0)) : t;
+  busy.add(fid); render();
+  try {
+    const snap = await ref().get();
+    if (snap.exists && (snap.data().done?.[fid]?.[k])) toast(`${f.name} ${k+1}차는 이미 완료됐어요.`);
+    else { await ref().update({sent: {[fid]: {[k]: v}}, done: {[fid]: {[k]: new Date().toISOString()}}, ready: {[fid]: {[k]: null}}});
+      toast(v === t ? `${f.name} ${k+1}차 ${v}개 완료` : `${f.name} ${k+1}차 ${v}개 완료 · 다음 차수 ${v < t ? "+" + (t - v) : "−" + (v - t)}`); }
+  } catch { toast("저장하지 못했어요. 다시 눌러주세요."); }
+  finally { busy.delete(fid); render(); }
+}
+$("#gBody").addEventListener("click", async e => {
+  const d = e.target.dataset.done; if (d) return finish(d);
+  const u = e.target.dataset.undo; if (!u) return;
+  if (e.target.dataset.armed !== "1"){ e.target.dataset.armed = "1"; e.target.textContent = "정말 취소?"; return; }
+  const [fid, ks] = u.split("|"); const k = Number(ks);
+  const d2 = structuredClone(doc); if (d2.done?.[fid]) delete d2.done[fid][k]; if (d2.sent?.[fid]) delete d2.sent[fid][k];
+  try { await ref().set(d2); toast("완료를 취소했어요."); } catch { toast("취소하지 못했어요."); }
+});
+$("#gBody").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id?.startsWith("rd-")) { e.preventDefault(); finish(e.target.id.slice(3)); } });
+// keep a half-typed number if someone else's update re-renders the grid
 $("#gBody").addEventListener("change", async e => {
-  const fid = e.target.dataset.fid; if (!fid || !db || !doc) return;
-  const k = currentRound(); const v = e.target.value === "" ? null : Math.max(0, Math.trunc(Number(e.target.value) || 0));
-  try { await ref().update({ready: {[fid]: {[k]: v}}}); } catch { toast("저장하지 못했어요. 다시 넣어주세요."); }
+  if (!e.target.id?.startsWith("rd-") || !doc) return; const fid = e.target.id.slice(3);
+  const f = doc.flavors.find(x => x.id === fid); if (!f) return; const k = flavorRound(f);
+  const v = e.target.value === "" ? null : Math.max(0, Math.trunc(Number(e.target.value) || 0));
+  try { await ref().update({ready: {[fid]: {[k]: v}}}); } catch {}
 });
 $("#actions").addEventListener("click", async e => {
-  if (!doc) return; const k = currentRound();
-  if (e.target.id === "btnFill") {
-    const patch = {}; doc.flavors.forEach(f => { patch[f.id] = {[k]: planFor(f)[k].target}; });
-    try { await ref().update({ready: patch}); } catch { toast("저장하지 못했어요."); }
-  }
-  if (e.target.id === "btnGo") showConfirm(k);
-  if (e.target.id === "btnUndo") {
-    if (e.target.dataset.armed !== "1"){ e.target.dataset.armed = "1"; e.target.textContent = "정말 취소?"; return; }
-    let last = -1; for (let i = doc.rounds - 1; i >= 0; i--) if (doc.departed?.[i]) { last = i; break; }
-    if (last < 0) return;
-    const d = structuredClone(doc); delete d.departed[last]; Object.values(d.sent || {}).forEach(m => delete m[last]);
-    try { await ref().set(d); toast(`${last+1}차 출발을 취소했어요.`); } catch { toast("취소하지 못했어요."); }
-  }
+  if (e.target.id !== "btnAll" || !doc) return;
+  if (e.target.dataset.armed !== "1"){ e.target.dataset.armed = "1"; e.target.textContent = "남은 맛을 목표 수량대로 완료할까요? 한 번 더 누르세요"; return; }
+  const k = floorRound(); const now = new Date().toISOString(); const sent = {}, done = {};
+  doc.flavors.forEach(f => { if (flavorRound(f) === k) { sent[f.id] = {[k]: doc.ready?.[f.id]?.[k] ?? planFor(f)[k].target}; done[f.id] = {[k]: now}; } });
+  try { await ref().update({sent, done}); toast(`${k+1}차 남은 맛을 완료했어요.`); } catch { toast("저장하지 못했어요."); }
 });
-function showConfirm(k){
-  const rows = doc.flavors.map(f => { const t = planFor(f)[k].target; const rd = readyOf(f.id, k); return {f, t, s: rd ?? t, set: rd != null}; });
-  const short = rows.filter(r => r.s < r.t), over = rows.filter(r => r.s > r.t), unset = rows.filter(r => !r.set);
-  const isLast = k === doc.rounds - 1;
-  const box = $("#confirm"); box.hidden = false; confirming = true;
-  box.innerHTML = `<b>${k+1}차 출발 — 총 ${rows.reduce((a, r) => a + r.s, 0)}개</b>
-    ${short.length ? `<div>모자란 맛 (${isLast ? "마지막 차수라 남은 수량으로 남아요" : "다음 차수로 이월"}):<ul>${short.map(r => `<li>${esc(r.f.name)} ${r.s} / ${r.t} → <b>${r.t - r.s}개 ${isLast ? "미출고" : "이월"}</b></li>`).join("")}</ul></div>` : ""}
-    ${over.length ? `<div>목표보다 많이 보낸 맛 (다음 차수에서 줄어요):<ul>${over.map(r => `<li>${esc(r.f.name)} ${r.s} / ${r.t}</li>`).join("")}</ul></div>` : ""}
-    ${unset.length ? `<div class="note">준비 수량을 안 넣은 맛 ${unset.length}개는 목표대로 출발한 걸로 기록해요: ${unset.map(r => esc(r.f.name)).join(", ")}</div>` : ""}
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn go" id="btnGoOk">출발 확정</button><button class="btn" id="btnGoBack">돌아가기</button></div>`;
-  box.scrollIntoView({behavior: "smooth", block: "nearest"});
-  $("#btnGoBack").onclick = () => { box.hidden = true; confirming = false; };
-  $("#btnGoOk").onclick = async () => {
-    $("#btnGoOk").disabled = true;
-    const sent = {}; rows.forEach(r => { sent[r.f.id] = {[k]: r.s}; });
-    try {
-      const snap = await ref().get();
-      if (snap.exists && snap.data().departed?.[k]) { toast(`${k+1}차는 이미 출발 처리됐어요.`); }
-      else { await ref().update({sent, departed: {[k]: new Date().toISOString()}}); toast(`${k+1}차 출발을 기록했어요.`); }
-      box.hidden = true; confirming = false;
-    } catch { toast("기록하지 못했어요. 다시 눌러주세요."); $("#btnGoOk").disabled = false; }
-  };
-}
 
-// setup
+// ---------- setup ----------
 function openSetup(){
   $("#setup").hidden = false;
   $("#sRounds").value = String(doc?.rounds ?? 4); $("#sFirst").value = String(doc?.firstPct ?? 70);
@@ -319,13 +309,13 @@ $("#btnSave").onclick = async () => {
   if (!list.length) return toast("‘이름 수량’ 형식으로 한 줄씩 넣어주세요.");
   const rounds = Math.min(6, Math.max(2, parseInt($("#sRounds").value, 10) || 4));
   const firstPct = Math.min(200, Math.max(10, parseInt($("#sFirst").value, 10) || 70));
-  const departedN = doc ? Object.keys(doc.departed || {}).length : 0;
-  if (rounds < departedN) return toast(`이미 ${departedN}차까지 출발해서 차수를 그보다 줄일 수 없어요.`);
+  const used = doc ? Math.max(0, ...Object.values(doc.done || {}).map(m => Math.max(-1, ...Object.keys(m).map(Number)) + 1)) : 0;
+  if (rounds < used) return toast(`이미 ${used}차까지 완료한 맛이 있어서 차수를 그보다 줄일 수 없어요.`);
   const old = doc?.flavors || [];
   const flavors = list.map((f, i) => ({ id: old.find(o => o.name === f.name)?.id || "f" + Date.now().toString(36) + i, name: f.name, total: f.total }));
   try {
     if (doc) await ref().update({flavors, rounds, firstPct});
-    else await ref().set({date: day, flavors, rounds, firstPct, departed: {}, sent: {}, ready: {}, createdAt: new Date().toISOString()});
+    else await ref().set({date: day, flavors, rounds, firstPct, done: {}, sent: {}, ready: {}, createdAt: new Date().toISOString()});
     $("#setup").hidden = true; toast("저장했어요.");
   } catch { toast("저장하지 못했어요."); }
 };
@@ -338,13 +328,17 @@ $("#btnCopyPrev").onclick = async () => {
   toast("최근 2주 안에 저장된 계획이 없어요.");
 };
 
-// day navigation + board mode
+// ---------- day navigation + board mode ----------
 const ref = () => db.doc("boards/" + day);
 function subscribe(){
   unsub?.(); doc = null; render(); $("#day").value = day;
   if (!db) return;
-  unsub = ref().onSnapshot(s => { doc = s.exists ? s.data() : null; if (!confirming) $("#confirm").hidden = true; render(); },
-    () => { $("#gBody").innerHTML = `<tr><td class="empty">연결이 끊겼어요. 새로고침해주세요.</td></tr>`; });
+  unsub = ref().onSnapshot(s => {
+    doc = s.exists ? s.data() : null;
+    const focus = document.activeElement?.id, val = focus?.startsWith("rd-") ? document.activeElement.value : null;
+    render();
+    if (val != null){ const el = document.getElementById(focus); if (el){ el.value = val; el.focus(); } }
+  }, () => { $("#gBody").innerHTML = `<tr><td class="empty">연결이 끊겼어요. 새로고침해주세요.</td></tr>`; });
 }
 $("#day").onchange = e => { if (e.target.value) { day = e.target.value; subscribe(); } };
 $("#prevDay").onclick = () => { day = shift(day, -1); subscribe(); };
