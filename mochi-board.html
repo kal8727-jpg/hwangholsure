@@ -183,7 +183,8 @@ function planFor(f){
     const target = Math.max(0, raw);
     const sent = departed ? Number(doc.sent?.[f.id]?.[k] ?? 0) : null;
     rows.push({target, sent, departed, carryIn: k === n - 1 ? 0 : carry});
-    if (departed) { before += sent; carry = raw - sent; } else { before += target; carry = 0; }
+    // carry moves both ways: short → next round +, over → next round − (and any over that a 0-target round can't absorb keeps going)
+    if (departed) { before += sent; carry = raw - sent; } else { before += target; carry = raw - target; }
   }
   return rows;
 }
