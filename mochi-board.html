@@ -135,6 +135,7 @@ body.board td{padding:12px 14px}
     <div class="row">
       <label>차수<select id="sRounds"><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
       <label>1차 크기 (다른 차수 대비 %)<input id="sFirst" type="number" inputmode="numeric" value="70" min="10" max="200" style="width:110px"></label>
+      <label>이 수량 미만 메뉴는 1차에 전부<input id="sSmall" type="number" inputmode="numeric" value="0" min="0" placeholder="0 = 안 씀" style="width:110px"></label>
       <span class="grow"></span>
       <button class="btn" id="btnCopyPrev">최근 날짜 품목 불러오기</button>
     </div>
@@ -178,7 +179,8 @@ function baseSplit(total, n, firstPct){
 // each flavor is finished round by round on its own (done[fid][k]); its later rounds follow immediately
 const isDone = (fid, k) => !!(doc.done?.[fid]?.[k] || doc.departed?.[k]);
 function planFor(f){
-  const n = doc.rounds, b = baseSplit(f.total, n, doc.firstPct), ov = doc.override?.[f.id] || {};
+  const n = doc.rounds, ov = doc.override?.[f.id] || {};
+  const b = doc.smallUnder && f.total < doc.smallUnder ? Array.from({length: n}, (_, i) => i === 0 ? f.total : 0) : baseSplit(f.total, n, doc.firstPct);
   const rows = []; let before = 0, carry = 0;
   for (let k = 0; k < n; k++) {
     const departed = isDone(f.id, k);
@@ -292,7 +294,7 @@ $("#actions").addEventListener("click", async e => {
 // ---------- setup ----------
 function openSetup(){
   $("#setup").hidden = false;
-  $("#sRounds").value = String(doc?.rounds ?? 4); $("#sFirst").value = String(doc?.firstPct ?? 70);
+  $("#sRounds").value = String(doc?.rounds ?? 4); $("#sFirst").value = String(doc?.firstPct ?? 70); $("#sSmall").value = String(doc?.smallUnder ?? 0);
   $("#sList").value = (doc?.flavors || []).map(f => `${f.name} ${f.total}`).join("\n");
 }
 $("#btnSetup").onclick = () => $("#setup").hidden ? openSetup() : ($("#setup").hidden = true);
@@ -309,13 +311,14 @@ $("#btnSave").onclick = async () => {
   if (!list.length) return toast("‘이름 수량’ 형식으로 한 줄씩 넣어주세요.");
   const rounds = Math.min(6, Math.max(2, parseInt($("#sRounds").value, 10) || 4));
   const firstPct = Math.min(200, Math.max(10, parseInt($("#sFirst").value, 10) || 70));
+  const smallUnder = Math.max(0, parseInt($("#sSmall").value, 10) || 0);
   const used = doc ? Math.max(0, ...Object.values(doc.done || {}).map(m => Math.max(-1, ...Object.keys(m).map(Number)) + 1)) : 0;
   if (rounds < used) return toast(`이미 ${used}차까지 완료한 맛이 있어서 차수를 그보다 줄일 수 없어요.`);
   const old = doc?.flavors || [];
   const flavors = list.map((f, i) => ({ id: old.find(o => o.name === f.name)?.id || "f" + Date.now().toString(36) + i, name: f.name, total: f.total }));
   try {
-    if (doc) await ref().update({flavors, rounds, firstPct});
-    else await ref().set({date: day, flavors, rounds, firstPct, done: {}, sent: {}, ready: {}, createdAt: new Date().toISOString()});
+    if (doc) await ref().update({flavors, rounds, firstPct, smallUnder});
+    else await ref().set({date: day, flavors, rounds, firstPct, smallUnder, done: {}, sent: {}, ready: {}, createdAt: new Date().toISOString()});
     $("#setup").hidden = true; toast("저장했어요.");
   } catch { toast("저장하지 못했어요."); }
 };
@@ -323,7 +326,7 @@ $("#btnCopyPrev").onclick = async () => {
   if (!db) return;
   for (let i = 1; i <= 14; i++) { const s = await db.doc("boards/" + shift(day, -i)).get().catch(() => null);
     if (s?.exists && s.data().flavors?.length) { const d = s.data();
-      $("#sList").value = d.flavors.map(f => `${f.name} ${f.total}`).join("\n"); $("#sRounds").value = String(d.rounds); $("#sFirst").value = String(d.firstPct);
+      $("#sList").value = d.flavors.map(f => `${f.name} ${f.total}`).join("\n"); $("#sRounds").value = String(d.rounds); $("#sFirst").value = String(d.firstPct); $("#sSmall").value = String(d.smallUnder ?? 0);
       toast(`${shift(day, -i)} 품목을 불러왔어요. 수량을 고치고 저장하세요.`); return; } }
   toast("최근 2주 안에 저장된 계획이 없어요.");
 };
