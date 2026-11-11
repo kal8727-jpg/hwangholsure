@@ -106,6 +106,10 @@ body.board .big{font-size:30px}
 body.board td.total,body.board td.rem{font-size:26px}
 body.board th{font-size:16px}
 body.board td{padding:12px 14px}
+/* board mode is also where the floor records what left: big touch targets */
+body.board .ready input{width:96px;font-size:22px;padding:8px 10px}
+body.board .ready .done-btn{font-size:18px;padding:10px 16px}
+body.board .undo{font-size:15px}
 @media (max-width:720px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.tile .v{font-size:22px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -216,10 +220,10 @@ function render(){
       const carry = r.carryIn ? `<span class="carry ${r.carryIn < 0 ? "neg" : ""}">${r.carryIn > 0 ? "+" + r.carryIn + " 이월" : r.carryIn + " 초과분"}</span>` : "";
       if (r.departed) {
         const cls = r.sent < r.target ? "short" : r.sent > r.target ? "over" : "done";
-        cells += `<td class="cell ${cls}"><span class="big">${r.sent}</span><span class="sub">목표 ${r.target}${r.sent !== r.target ? ` · ${r.sent < r.target ? "−" + (r.target - r.sent) : "+" + (r.sent - r.target)}` : ""}${r.at ? " · " + hm(r.at) : ""}${k === lastDone ? `<button class="undo edit-only" data-undo="${esc(f.id)}|${k}">취소</button>` : ""}</span></td>`;
+        cells += `<td class="cell ${cls}"><span class="big">${r.sent}</span><span class="sub">목표 ${r.target}${r.sent !== r.target ? ` · ${r.sent < r.target ? "−" + (r.target - r.sent) : "+" + (r.sent - r.target)}` : ""}${r.at ? " · " + hm(r.at) : ""}${k === lastDone ? `<button class="undo" data-undo="${esc(f.id)}|${k}">취소</button>` : ""}</span></td>`;
       } else if (k === fr) {
         cells += `<td class="cell now"><span class="big">${r.target}</span>${carry}
-          <div class="ready edit-only"><input type="number" inputmode="numeric" min="0" id="rd-${esc(f.id)}" value="${doc.ready?.[f.id]?.[k] ?? ""}" placeholder="${r.target}" aria-label="${esc(f.name)} ${k+1}차 보낸 수량">
+          <div class="ready"><input type="number" inputmode="numeric" min="0" id="rd-${esc(f.id)}" value="${doc.ready?.[f.id]?.[k] ?? ""}" placeholder="${r.target}" aria-label="${esc(f.name)} ${k+1}차 보낸 수량">
           <button class="btn primary done-btn" data-done="${esc(f.id)}"${busy.has(f.id) ? " disabled" : ""}>완료</button></div></td>`;
       } else cells += `<td class="cell future"><span class="big">${r.target}</span>${carry}</td>`;
     });
