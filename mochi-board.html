@@ -185,15 +185,23 @@ const isDone = (fid, k) => !!(doc.done?.[fid]?.[k] || doc.departed?.[k]);
 function planFor(f){
   const n = doc.rounds, ov = doc.override?.[f.id] || {};
   const b = doc.smallUnder && f.total < doc.smallUnder ? Array.from({length: n}, (_, i) => i === 0 ? f.total : 0) : baseSplit(f.total, n, doc.firstPct);
-  const rows = []; let before = 0, carry = 0;
+  const rows = []; let carry = 0, sentDone = 0;
+  // rounds ship in order. short → the missing amount is added to the next round.
   for (let k = 0; k < n; k++) {
-    const departed = isDone(f.id, k);
-    const raw = k === n - 1 ? f.total - before : (ov[k] ?? b[k]) + carry;
-    const target = Math.max(0, raw);
+    const departed = isDone(f.id, k), base = ov[k] ?? b[k];
+    const target = Math.max(0, base + carry);
     const sent = departed ? Number(doc.sent?.[f.id]?.[k] ?? 0) : null;
-    rows.push({target, sent, departed, carryIn: k === n - 1 ? 0 : carry, at: doc.done?.[f.id]?.[k] || doc.departed?.[k] || null});
-    // carry moves both ways: short → next round +, over → next round − (and any over that a 0-target round can't absorb keeps going)
-    if (departed) { before += sent; carry = raw - sent; } else { before += target; carry = raw - target; }
+    rows.push({target, base, sent, departed, carryIn: 0, at: doc.done?.[f.id]?.[k] || doc.departed?.[k] || null});
+    if (departed) { sentDone += sent; carry = Math.max(0, target - sent); } else carry = 0;
+  }
+  // over → the next round still ships its full batch; the extra comes off the end of the day (last round first, then backwards)
+  const open = rows.map((r, k) => k).filter(k => !rows[k].departed);
+  if (open.length) {
+    const last = open[open.length - 1];
+    rows[last].target = f.total - sentDone - open.slice(0, -1).reduce((a, k) => a + rows[k].target, 0);
+    for (let i = open.length - 1; i > 0 && rows[open[i]].target < 0; i--) { rows[open[i - 1]].target += rows[open[i]].target; rows[open[i]].target = 0; }
+    if (rows[open[0]].target < 0) rows[open[0]].target = 0;
+    open.forEach(k => { rows[k].carryIn = rows[k].target - rows[k].base; });
   }
   return rows;
 }
@@ -217,7 +225,7 @@ function render(){
     let lastDone = -1; p.forEach((r, k) => { if (doc.done?.[f.id]?.[k]) lastDone = k; });
     let cells = "";
     p.forEach((r, k) => {
-      const carry = r.carryIn ? `<span class="carry ${r.carryIn < 0 ? "neg" : ""}">${r.carryIn > 0 ? "+" + r.carryIn + " 이월" : r.carryIn + " 초과분"}</span>` : "";
+      const carry = r.carryIn ? `<span class="carry ${r.carryIn < 0 ? "neg" : ""}">${r.carryIn > 0 ? "+" + r.carryIn + " 이월" : r.carryIn + " 앞 차수 초과분"}</span>` : "";
       if (r.departed) {
         const cls = r.sent < r.target ? "short" : r.sent > r.target ? "over" : "done";
         cells += `<td class="cell ${cls}"><span class="big">${r.sent}</span><span class="sub">목표 ${r.target}${r.sent !== r.target ? ` · ${r.sent < r.target ? "−" + (r.target - r.sent) : "+" + (r.sent - r.target)}` : ""}${r.at ? " · " + hm(r.at) : ""}${k === lastDone ? `<button class="undo" data-undo="${esc(f.id)}|${k}">취소</button>` : ""}</span></td>`;
