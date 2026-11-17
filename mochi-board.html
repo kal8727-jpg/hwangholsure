@@ -118,7 +118,7 @@ body.board .undo{font-size:15px}
   <header>
     <div class="brand">모찌 출고 보드<small>송도 생산 → 택배 차수 배분</small></div>
     <div class="grow"></div>
-    <div class="daynav edit-only">
+    <div class="daynav">
       <button class="btn small" id="prevDay" aria-label="전날">‹</button>
       <input type="date" id="day" aria-label="날짜">
       <button class="btn small" id="nextDay" aria-label="다음날">›</button>
@@ -347,13 +347,18 @@ function subscribe(){
     if (val != null){ const el = document.getElementById(focus); if (el){ el.value = val; el.focus(); } }
   }, () => { $("#gBody").innerHTML = `<tr><td class="empty">연결이 끊겼어요. 새로고침해주세요.</td></tr>`; });
 }
-$("#day").onchange = e => { if (e.target.value) { day = e.target.value; subscribe(); } };
-$("#prevDay").onclick = () => { day = shift(day, -1); subscribe(); };
-$("#nextDay").onclick = () => { day = shift(day, 1); subscribe(); };
+// follow the calendar day unless someone picked another date on purpose (a screen left open overnight moves to today)
+let followToday = true;
+const pick = k => { day = k; followToday = k === keyOf(new Date()); subscribe(); };
+$("#day").onchange = e => { if (e.target.value) pick(e.target.value); };
+$("#prevDay").onclick = () => pick(shift(day, -1));
+$("#nextDay").onclick = () => pick(shift(day, 1));
+const rollDay = () => { const t = keyOf(new Date()); if (followToday && t !== day && db) { day = t; subscribe(); } };
+document.addEventListener("visibilitychange", () => { if (!document.hidden) rollDay(); });
 function setBoard(on){ document.body.classList.toggle("board", on); $("#btnBoard").textContent = on ? "편집 화면" : "보드 화면"; ls.set("board", on ? "1" : "0"); }
 $("#btnBoard").onclick = () => setBoard(!document.body.classList.contains("board"));
 setBoard(location.hash === "#board" || ls.get("board") === "1");
-const tick = () => { const d = new Date(); $("#clock").textContent = `${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`; };
+const tick = () => { const d = new Date(); $("#clock").textContent = `${d.getMonth()+1}/${d.getDate()} ${z(d.getHours())}:${z(d.getMinutes())}`; rollDay(); };
 tick(); setInterval(tick, 20000);
 
 $("#day").value = day; render();
